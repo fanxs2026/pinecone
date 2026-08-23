@@ -1,0 +1,1 @@
+此目录为上传文件存储卷（compose 自动创建挂载）。运行时由 ./uploads:/app/uploads 挂载。

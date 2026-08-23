@@ -1,0 +1,45 @@
+# Pinecone Open Core — git filter-repo 历史清除清单
+# 用法（在本机、已备份 .git 的前提下执行）：
+#   Bash:    git filter-repo --invert-paths --paths-from-file .gitignore-ee-paths.txt
+#   Win PS:  .\scripts\open-core-push.ps1   (runs filter-repo then force-push)
+#
+# 作用：从【全部历史 commit】中彻底删除以下企业版(EE)源码路径，
+#       使公开仓库历史中不含任何 EE 实现 / License 模块。
+# 注意：
+#   - automation 引擎内核 / ApiTokenGuard 已留在社区，不在本清单。
+#   - 本清单仅含 EE 专属实现（controller / 页面 / license 模块）。
+#   - overlay 目录在主仓库外，不会被推；此处列出仅为防御性清理。
+
+# ---- 后端 EE 模块（整目录） ----
+apps/backend/src/modules/license/
+apps/backend/src/modules/sso/
+apps/backend/src/modules/scim/
+apps/backend/src/modules/audit/
+apps/backend/src/modules/github/
+apps/backend/src/modules/webhooks/
+apps/backend/src/modules/webhook-inbound/
+apps/backend/src/modules/ci/
+apps/backend/src/modules/api-tokens/
+apps/backend/src/modules/teams/
+apps/backend/src/modules/trash/
+apps/backend/src/modules/ai/
+apps/backend/src/modules/okr/
+
+# ---- 前端 EE 管理页面 ----
+apps/frontend/src/app/(dashboard)/admin/licenses/
+apps/frontend/src/app/(dashboard)/admin/instances/
+
+# ---- 防御性：overlay 不应进主仓库历史（主仓库外，冗余保险） ----
+pinecone-overlay/
+
+# ---- 设计文档 / 企业版内部规划（一概不进公开仓库，requirement #3） ----
+# 这些文件当前已误提交并在 GitHub 公开，必须从【全部历史】清除后强推。
+deliverables/design-docs/
+STATUS_COLORS_DESIGN.md
+deliverables/edition-isolation-plan-1.0.0.md
+deliverables/sso-enterprise-guide-1.0.0.md
+
+# ---- 防御性：旧的 .git 备份（含抽取前 EE 历史+密钥，绝不可进公开仓库） ----
+# 执行净化前请先用 `mv .git.before-rewrite ../pinecone-git-backup-pre-opencore` 把备份移出仓库，
+# 此处列出仅为保证即使残留也能从历史彻底清除。
+.git.before-rewrite/

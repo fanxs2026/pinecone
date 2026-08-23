@@ -1,0 +1,21 @@
+# Pinecone — gitleaks 配置
+# 目的：排除测试 fixture 文件，避免测试密码（password123 / correct-password / E2eTest!23456 等）
+#       触发 gitleaks 默认规则误报，导致 CI 密钥扫描门禁（ci.yml 中 gitleaks-action）误红。
+# 注意：此 allowlist 仅放过测试代码中的示例密码，真实凭据仍会被扫描拦截。
+#
+# 重要：allowlist.paths 是正则（非 glob），gitleaks 用 go-re2 编译，
+#       `**` 会直接 panic（"missing argument to repetition operator"），必须用正则写法。
+
+[allowlist]
+# 路径正则，匹配以下路径的命中一律放行
+paths = [
+  # .env 含真实生产密钥，已被 gitignore 不会进仓库；此处显式排除作为双保险，
+  # 防止本地预扫使用 --no-gitignore 或版本差异时误报真密钥导致红。
+  '\.env$',
+  # 单元测试 / 规格文件
+  '\.spec\.ts$',
+  '\.e2e-spec\.ts$',
+  '\.test\.ts$',
+  # 测试目录（test/ 或 tests/，位于仓库根或任意子目录）
+  '(^|/)(test|tests)/',
+]

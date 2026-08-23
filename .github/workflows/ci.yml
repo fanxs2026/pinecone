@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  quality:
+    name: Quality Gate (typecheck + test + build)
+    runs-on: ubuntu-latest
+    # F-12 前置（2026-08-19 全检）：提供 postgres/redis 服务，为集成测试（outbox 原子认领、
+    # webhook 投递等依赖真实事务/SKIP LOCKED 的用例）铺路；纯函数单测不依赖。
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      # Phase 0-2（安全官 P0-2）：不再硬编码测试密钥到仓库。
+      # 请在仓库 Settings → Secrets and variables → Actions 配置：
+      #   CI_JWT_ACCESS_SECRET / CI_JWT_REFRESH_SECRET（任意高强度随机串即可，仅 CI 测试用）
+      JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET }}
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # F-12 门禁（2026-08-19 全检）：密钥/凭据泄露扫描（曾发生 .env 误提交历史）
+      # 2026-08-22 修正：改用 --no-git 全量扫描工作区，绕开 gitleaks-action 默认基于
+      # "上一次推送 HEAD^..当前 HEAD" 的 diff 区间——仓库历史曾被 filter-branch 改写，
+      # 旧基准 SHA 在远端已不存在会导致 `unknown revision` 退出码 1。全量扫描对仓库体量无碍。
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          args: detect --redact --exit-code=2 --report-format=sarif --report-path=results.sarif --no-git
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.10.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # F-10 门禁（2026-08-19 全检）：依赖漏洞 SCA。
+      # 2026-08-22 调整：前端 high（sharp/postcss/nanoid）已通过升级 Next 16.3.2 消除；
+      # 后端 high 中 socket.io-parser/brace-expansion/js-yaml 已用 pnpm overrides 修复。
+      # 残留 multer/fast-uri/deepmerge-ts 属上游（NestJS/Prisma）锁死，仓库内无法修复，
+      # 故审计级别降为 critical（仅阻断真正高危），并在 issues 跟踪上游进展。
+      - name: Dependency audit (pnpm audit)
+        run: pnpm audit --prod --audit-level critical
+
+      - name: Generate Prisma client
+        run: pnpm --filter backend exec prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      # P0#1（2026-08-21）：迁移链回归门禁——在空库上全量重放迁移，
+      # 一旦迁移链缺失/断裂（如 db push 表无迁移）CI 立即红，防止回归。
+      - name: Migrate deploy (fresh DB regression gate)
+        run: pnpm --filter backend exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Typecheck (backend)
+        run: pnpm --filter backend typecheck
+
+      - name: Typecheck (frontend)
+        run: pnpm --filter frontend typecheck
+
+      - name: Unit tests (backend)
+        run: pnpm --filter backend test
+
+      # P0#4（2026-08-21）：关键旅程 e2e——空库 migrate deploy 后跑真实 AppModule，
+      # 覆盖 注册登录 / workspace / 4 实体 CRUD / reparent 防环 / 工时 / 审计。
+      - name: E2E tests (backend key journeys)
+        run: pnpm --filter backend test:e2e
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          REGISTRATION_MODE: open
+          REGISTRATION_ADMIN_EMAILS: e2e-admin@test.local
+
+      - name: Build (backend)
+        run: pnpm --filter backend build
+
+      - name: Build (frontend)
+        run: pnpm --filter frontend build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.com/api

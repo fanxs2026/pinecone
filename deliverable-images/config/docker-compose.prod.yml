@@ -1,0 +1,117 @@
+# Pinecone 生产部署（含 postgres+redis 全栈）
+# 用法：docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+
+services:
+  postgres:
+    image: postgres:18.4
+    container_name: pinecone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pinecone
+      POSTGRES_USER: pinecone_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      # postgres 18.4（docker-library/postgres#1259）：数据目录改为 major-version 子目录，
+      # 必须单点挂载 /var/lib/postgresql（旧路径 /var/lib/postgresql/data 会被识别为未迁移库而拒绝启动）
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init-v2:/docker-entrypoint-initdb.d
+      # 全量建表 DDL（含用户禁用/todo/注册控制表）：
+      # 按字母序 01-init.sh(建用户) → 02-schema.sql(建表) 依次执行
+      - ./docker/postgres/init/02-schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinecone_admin -d pinecone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pinecone-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: pinecone-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pinecone-network
+
+  backend:
+    # image 与 build 并存：离线分发包直接 load pinecone-backend.tar 后 compose 用固定镜像名，
+    # 不依赖目录名（避免 compose 默认镜像名=目录名-backend 触发无源码重建失败）；源码用户加 --build 仍可重建
+    image: pinecone-backend:latest
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: pinecone-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      # Persist uploaded files (容器重启不丢附件)
+      - ./uploads:/app/uploads
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # 最小权限：运行时用 pinecone_app（DML）而非 pinecone_admin（DDL）
+      DATABASE_URL: postgresql://pinecone_app:${APP_DB_PASSWORD}@postgres:5432/pinecone
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:6173}
+      # ── Cookie 安全（verify2 F-003）：生产走 HTTPS 反代时设 true（Secure cookie）；默认 false 兼容 http 后端 ──
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # ── 注册控制（发布门禁 Fix#2：必须显式转发，否则生产容器内默认 fail-closed=whitelist）──
+      # 显式设 open 才开放注册；whitelist=仅白名单邮箱；invite=需邀请码（配合 REGISTRATION_ADMIN_EMAILS）
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
+      # 可管理白名单/邀请码/用户禁用的管理员邮箱（逗号分隔；未配置=管理端全部 403）
+      REGISTRATION_ADMIN_EMAILS: ${REGISTRATION_ADMIN_EMAILS:-}
+      # ── SMTP（密码重置/to-do 通知邮件；未配置时这些邮件功能不可用，但不影响其他功能）──
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_SECURE: ${EMAIL_SECURE:-true}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pinecone-network
+
+  frontend:
+    # image 与 build 并存：离线分发包直接 load pinecone-frontend.tar 后 compose 用固定镜像名
+    image: pinecone-frontend:latest
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      # NEXT_PUBLIC_* 是 BUILD 时内联进 JS 的，必须通过 build args 传（运行时 environment 不生效）
+      args:
+        NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3000/api}
+        NEXT_PUBLIC_WS_URL: ${WS_URL:-http://localhost:3000/ws}
+    container_name: pinecone-frontend
+    restart: unless-stopped
+    ports:
+      # 容器内 `next start` 默认监听 3000（前端 Dockerfile EXPOSE 3000）
+      - "${FRONTEND_PORT:-6173}:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - pinecone-network
+
+networks:
+  pinecone-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

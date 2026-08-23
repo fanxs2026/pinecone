@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:18.4
+    container_name: pinecone-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: pinecone
+      POSTGRES_USER: pinecone_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pinecone_dev_pwd}
+      # P2-③：app 用户密码经环境变量注入（01-init.sh 读取），不再硬编码进 init SQL
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-pinecone_dev_app_pwd}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # 只挂 01-init.sh 建角色；【建表统一走 prisma migrate deploy】
+      # （2026-08-21 废弃 init 快照 02-schema.sql / pinecone-full-init.sql：
+      #  旧快照缺 37 张表、与迁移链双轨漂移；本地开发 = docker 起 postgres 后
+      #  执行 prisma migrate deploy / migrate dev）
+      - ./docker/postgres/init-v2/01-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinecone_admin -d pinecone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: pinecone-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:

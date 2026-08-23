@@ -1,0 +1,1475 @@
+generator client {
+  provider        = "prisma-client"
+  moduleFormat    = "cjs"
+  output          = "../src/generated"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum EntityType {
+  IDEA
+  FEATURE
+  STORY
+  SUPPORT
+  TEST_CASE
+  IMPORT_JOB
+}
+
+enum ActionType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  DELETED
+  TIME_LOGGED
+}
+
+enum RelationType {
+  PROMOTED_FROM
+  CLONED_FROM
+  RELATED
+}
+
+model User {
+  id                String   @id @default(uuid()) @db.Uuid
+  email             String   @unique
+  name              String?
+  passwordHash      String
+  refreshTokenHash  String?
+  avatar            String?
+  active            Boolean  @default(true)
+  isSystemAdmin     Boolean  @default(false) // Phase 2: 平台级管理员（审计/备份/全局管理面）
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspaceMembers  WorkspaceMember[]
+  shareLinks         ShareLink[]         @relation("ShareLinkCreator")
+  createdIdeas      Idea[]             @relation("IdeaCreator")
+  assignedIdeas     Idea[]             @relation("IdeaAssignee")
+  createdFeatures   Feature[]          @relation("FeatureCreator")
+  assignedFeatures  Feature[]          @relation("FeatureAssignee")
+  createdStories    Story[]            @relation("StoryCreator")
+  assignedStories   Story[]            @relation("StoryAssignee")
+  createdSupports   Support[]          @relation("SupportCreator")
+  assignedSupports  Support[]          @relation("SupportAssignee")
+  timeEntries       TimeEntry[]
+  activities        Activity[]
+  todoItemsCreated  TodoItem[]         @relation("TodoCreator")
+  todoItemsAssigned TodoItem[]         @relation("TodoAssignee")
+  comments          Comment[]
+  passwordResetTokens PasswordResetToken[]
+  attachments       Attachment[]
+  kbPages           KbPage[]           @relation("KbPageAuthor")
+  kbUpdatedPages    KbPage[]           @relation("KbPageUpdater")
+  kbComments        KbComment[]        @relation("KbCommentAuthor")
+  apiTokensCreated  ApiToken[]         @relation("ApiTokenCreator")
+  testCasesCreated  TestCase[]         @relation("TestCaseCreator")
+  testRunsExecuted  TestRun[]          @relation("TestRunExecutor")
+  webhooksCreated   WebhookEndpoint[]  @relation("WebhookCreator")
+  webhookInboundCreated WebhookInbound[] @relation("WebhookInboundCreator")
+  importJobsCreated ImportJob[]         @relation("ImportCreator")
+  ssoProvidersCreated SsoProvider[]     @relation("SsoProviderCreator")
+  testPlansCreated  TestPlan[]          @relation("TestPlanCreator")
+  notificationsReceived Notification[]  @relation("NotificationRecipient")
+  notificationsActed   Notification[]  @relation("NotificationActor")
+  teamMemberships     TeamMember[]
+  dashboardsCreated   Dashboard[]        @relation("DashboardCreator")
+  reportSubscriptionsCreated ReportSubscription[] @relation("ReportSubscriptionCreator")
+  installedPluginsCreated InstalledPlugin[] @relation("PluginInstaller")
+  kbPageLinksCreated KbPageLink[]       @relation("KbPageLinkCreator")
+  kbPageVersionsEdited KbPageVersion[]  @relation("KbPageVersionEditor")
+
+  @@map("users")
+}
+
+model Workspace {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  // 2026-08-14：回收站自动清理开关（软删超过 N 天物理删除），默认开启 180 天
+  trashPurgeEnabled Boolean  @default(true)
+  trashPurgeDays    Int      @default(180)
+  // 2026-08-14：P0 反馈门户 + 优先级评分配置
+  feedbackPortalEnabled      Boolean  @default(false)
+  feedbackPortalToken        String?  @unique // 公开门户令牌（工作区级）
+  feedbackPortalRequireEmail Boolean  @default(true) // 门户提交/投票是否要求邮箱
+  feedbackPortalTarget       String   @default("SUPPORT") // 门户提交落点：SUPPORT | IDEA
+  scoringConfig              Json? // { model:'RICE'|'ICE'|'CUSTOM', dimensions:[{key,label,weight,scale}], presets:{...} }
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members       WorkspaceMember[]
+  ideas         Idea[]
+  releases      Release[]
+  features      Feature[]
+  stories       Story[]
+  workflows     Workflow[]
+  activities        Activity[]
+  comments          Comment[]
+  entityRelations   EntityRelation[]
+  supports          Support[]
+  attachments       Attachment[]
+  timeEntries       TimeEntry[]
+  kbSpaces          KbSpace[]
+  kbPages           KbPage[]
+  kbComments        KbComment[]
+  kbTags            KbTag[]
+  todoItems         TodoItem[]
+  apiTokens         ApiToken[]
+  testCases         TestCase[]
+  testRuns          TestRun[]
+  webhooks          WebhookEndpoint[]
+  webhookInbound    WebhookInbound[]
+  installedPlugins  InstalledPlugin[]
+  importJobs        ImportJob[]
+  ssoProviders      SsoProvider[]
+  testPlans         TestPlan[]
+  scimConfig        ScimConfig?
+  scimGroups        ScimGroup[]
+  notifications     Notification[]
+  automationRules   AutomationRule[]
+  teams             Team[]
+  sprints           Sprint[]
+  githubConfigs     GithubConfig[]
+  githubLinks       GithubLink[]
+  ciConfigs         CiConfig[]
+  ciBuilds          CiBuild[]
+  shareLinks        ShareLink[]
+  objectives        Objective[]
+  votes             Vote[]
+  themes            Theme[]
+  entityThemes      EntityTheme[]
+  scores            Score[]
+  scoreHistory      ScoreHistory[]
+  entityCounters    EntityCounter[]
+  dashboards        Dashboard[]
+  reportSubscriptions ReportSubscription[]
+  kbPageLinks       KbPageLink[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  userId      String   @db.Uuid
+  role        UserRole @default(MEMBER)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model Idea {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @db.Uuid
+  teamId              String?  @db.Uuid
+  sprintId            String?  @db.Uuid
+  code         String?  @unique
+  title        String
+  description  String?  @db.Text
+  category     String?
+  status       String   @default("OPEN")
+  assigneeId   String?  @db.Uuid
+  assigneeName String?
+  createdById  String   @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt   DateTime?
+  tags         String[]
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignee  User?     @relation("IdeaAssignee", fields: [assigneeId], references: [id])
+  createdBy User      @relation("IdeaCreator", fields: [createdById], references: [id])
+  todoItems TodoItem[]
+
+  @@index([workspaceId, status])
+  @@index([createdById])
+  @@index([assigneeId])
+  @@map("ideas")
+}
+
+model Release {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  version     String?
+  description String?  @db.Text
+  startDate       DateTime? @db.Date
+  endDate         DateTime? @db.Date
+  stageDate       DateTime? @db.Date
+  productionDate  DateTime? @db.Date
+  status          String   @default("PLANNING")
+  milestone       String?  // P1-D：里程碑标记（如 M1/M2/GA），分享页叙事展示
+  narrative       String?  @db.Text // P1-D：路线图叙事文案（分享页展示）
+  totalCapacity   Int?
+  dependsOnId     String?  @db.Uuid // G8 甘特依赖（2026-08-19）：本发布依赖的发布（甘特连线；依赖方删除置空）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dependsOn  Release?  @relation("ReleaseDependency", fields: [dependsOnId], references: [id], onDelete: SetNull)
+  dependedBy Release[] @relation("ReleaseDependency")
+  features  Feature[]
+  sprints   Sprint[]
+  stories   Story[]
+  supports  Support[]
+  testCases TestCase[]
+  testRuns  TestRun[]
+  testPlans TestPlan[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, startDate])
+  @@map("releases")
+}
+
+model Feature {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @db.Uuid
+  teamId              String?  @db.Uuid
+  code             String?  @unique
+  releaseId        String?  @db.Uuid
+  parentFeatureId  String?  @db.Uuid
+  isEpic           Boolean  @default(false)
+  title            String
+  description      String?  @db.Text
+  priority         String   @default("P3") // P1-P5（2026-08-15 起），默认 P3
+  status           String   @default("OPEN")
+  sortOrder        Int      @default(0)
+  assigneeId       String?  @db.Uuid
+  assigneeName     String?
+  createdById      String   @db.Uuid
+  effortEstimate   Decimal? @db.Decimal(10, 2)
+  effortUnit       String?  @default("HOURS")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt   DateTime?
+  tags             String[]
+
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  release      Release?   @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  parentFeature Feature?  @relation("FeatureHierarchy", fields: [parentFeatureId], references: [id])
+  children     Feature[]  @relation("FeatureHierarchy")
+  assignee     User?      @relation("FeatureAssignee", fields: [assigneeId], references: [id])
+  createdBy    User       @relation("FeatureCreator", fields: [createdById], references: [id])
+  stories      Story[]
+
+  @@index([workspaceId, releaseId])
+  @@index([workspaceId, status])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@map("features")
+}
+
+model Story {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workspaceId         String   @db.Uuid
+  teamId              String?  @db.Uuid
+  sprintId            String?  @db.Uuid
+  featureId           String   @db.Uuid
+  releaseId           String?  @db.Uuid
+  code                String?  @unique
+  title               String
+  description         String?  @db.Text
+  acceptanceCriteria  String?  @db.Text
+  storyPoints         Int?
+  priority            String   @default("P3") // P1-P5（2026-08-15 起），默认 P3
+  status              String   @default("OPEN")
+  sortOrder           Int      @default(0)
+  assigneeId          String?  @db.Uuid
+  parentId            String?  @db.Uuid
+  assigneeName        String?
+  createdById         String   @db.Uuid
+  estimateHours       Decimal? @db.Decimal(10, 2)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  deletedAt   DateTime?
+  kind                String   @default("FEATURE") // FEATURE | DEFECT | CHORE（缺陷/技术债子类型）
+
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  feature     Feature     @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  release     Release?    @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  sprint      Sprint?     @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  assignee    User?       @relation("StoryAssignee", fields: [assigneeId], references: [id])
+  parent      Story?      @relation("StorySubtask", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Story[]     @relation("StorySubtask")
+  createdBy   User        @relation("StoryCreator", fields: [createdById], references: [id])
+  timeEntries TimeEntry[]
+  testCases   TestCase[]
+
+  @@index([workspaceId, featureId])
+  @@index([workspaceId, status])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([releaseId])
+  @@map("stories")
+}
+
+model Support {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @db.Uuid
+  teamId              String?  @db.Uuid
+  code         String?  @unique
+  title        String
+  description  String?  @db.Text
+  status       String   @default("OPEN")
+  type         String   @default("SUPPORT_REQUEST")
+  severity     String?  // 缺陷严重度：CRITICAL | MAJOR | MINOR | TRIVIAL；仅 type=DEFECT 有意义
+  discoveryPhase String? // 缺陷发现阶段：TEST | PRODUCTION | CUSTOMER；仅 type=DEFECT 有意义（2026-08-16 逃逸率口径）
+  rootCause    String?  @db.Text // 缺陷根因（选填，type=DEFECT 时有效）
+  releaseId    String?  @db.Uuid
+  createdById  String   @db.Uuid
+  assigneeId   String?  @db.Uuid
+  assigneeName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt   DateTime?
+  tags         String[]
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("SupportCreator", fields: [createdById], references: [id])
+  assignee  User?     @relation("SupportAssignee", fields: [assigneeId], references: [id])
+  release   Release?  @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  testRuns  TestRun[]
+
+  @@index([workspaceId, status])
+  @@index([createdById])
+  @@index([assigneeId])
+  @@index([workspaceId, releaseId])
+  @@map("supports")
+}
+
+model Workflow {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  name        String
+  entityType  EntityType
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  statuses  StoryStatus[]
+
+  @@unique([workspaceId, entityType])
+  @@map("workflows")
+}
+
+model StoryStatus {
+  id          String   @id @default(uuid()) @db.Uuid
+  workflowId  String   @db.Uuid
+  name        String
+  color       String   @default("#6B7280")
+  type        String   @default("CUSTOM")
+  wipLimit    Int?      // WIP 上限（P2-⑫，null = 不限）
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workflow    Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  transitionsFrom  StatusTransition[] @relation("FromStatus")
+  transitionsTo    StatusTransition[] @relation("ToStatus")
+
+  @@unique([workflowId, name])
+  @@map("story_statuses")
+}
+
+model StatusTransition {
+  id           String   @id @default(uuid()) @db.Uuid
+  fromStatusId String   @db.Uuid
+  toStatusId   String   @db.Uuid
+  allowedRoles UserRole[]
+  createdAt    DateTime @default(now())
+
+  fromStatus StoryStatus @relation("FromStatus", fields: [fromStatusId], references: [id], onDelete: Cascade)
+  toStatus   StoryStatus @relation("ToStatus", fields: [toStatusId], references: [id], onDelete: Cascade)
+
+  @@unique([fromStatusId, toStatusId])
+  @@map("status_transitions")
+}
+
+model TimeEntry {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  storyId     String?      @db.Uuid
+  userId      String       @db.Uuid
+  entityType  String?
+  entityId    String?      @db.Uuid
+  description String
+  hours       Decimal      @db.Decimal(10, 2)
+  date        DateTime     @db.Date
+  billable    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  story     Story?    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([storyId])
+  @@index([userId])
+  @@index([date])
+  @@index([entityType, entityId])
+  @@index([workspaceId])
+  @@map("time_entries")
+}
+
+model Activity {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  userId      String?    @db.Uuid
+  entityType  EntityType
+  entityId    String     @db.Uuid
+  action      ActionType
+  metadata    Json?
+  // 2026-08-19 设置·系统管理可读性：记录操作来源 IP（AsyncLocalStorage 全局捕获，仅新记录有值）
+  ip          String?
+  createdAt   DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@map("activities")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Comment {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  entityType  EntityType
+  entityId    String     @db.Uuid
+  content     String     @db.Text
+  userId      String     @db.Uuid
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([workspaceId, createdAt])
+  @@map("comments")
+}
+
+// ===== 通知中心（@提及 / 指派变更等）=====
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  userId      String   @db.Uuid // 接收者
+  actorId     String   @db.Uuid // 触发人（操作者）
+  type        String // MENTION（评论@提及）/ ASSIGNED（被指派）
+  entityType  String // STORY/IDEA/FEATURE/SUPPORT/...
+  entityId    String   @db.Uuid
+  entityTitle String?
+  snippet     String? // 摘要（如评论内容前 80 字）
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User      @relation("NotificationActor", fields: [actorId], references: [id])
+
+  @@index([userId, read])
+  @@index([workspaceId, createdAt])
+  @@map("notifications")
+}
+
+// ===== 自动化规则引擎（P0-③：当…则…）=====
+model AutomationRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @db.Uuid
+  name         String
+  entityType   String // STORY/IDEA/FEATURE/SUPPORT/ALL
+  trigger      String // CREATED / STATUS_CHANGED / ASSIGNED
+  triggerValue String? // STATUS_CHANGED 的目标状态（如 DONE）；CREATED/ASSIGNED 可空
+  actions      Json // [{type: NOTIFY|SET_STATUS, target, message}]
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, enabled])
+  @@map("automation_rules")
+}
+
+// ===== 团队（P0-④：项目/团队级权限隔离）=====
+model Team {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+
+  @@unique([workspaceId, name])
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+// ===== Sprint 迭代（P1-①：迭代规划 + Backlog）=====
+model Sprint {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  releaseId   String?   @db.Uuid
+  name        String
+  startDate   DateTime? @db.Date
+  endDate     DateTime? @db.Date
+  goal        String?   @db.Text
+  status      String    @default("PLANNED") // PLANNED / ACTIVE / COMPLETED
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  release   Release?  @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  stories   Story[]
+
+  @@index([workspaceId, releaseId])
+  @@map("sprints")
+}
+
+// ===== 代码仓库集成（P1-⑥/P1-C：GITHUB/GITLAB/GITEE 配置 + 入站 Webhook + commit/PR 关联）=====
+model GithubConfig {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @db.Uuid
+  provider      String   @default("GITHUB") // GITHUB | GITLAB | GITEE（多 VCS 入站，P1-C）
+  repoFullName  String
+  webhookSecret String   // AES-GCM 密文（secret-cipher）；创建时明文仅返回一次
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  links     GithubLink[]
+
+  @@unique([workspaceId, repoFullName])
+  @@index([workspaceId, provider])
+  @@map("github_configs")
+}
+
+model CiConfig {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  secretEnc   String   // AES-GCM 密文（secret-cipher）；创建时明文仅返回一次
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  builds    CiBuild[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("ci_configs")
+}
+
+model CiBuild {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @db.Uuid
+  ciConfigId   String?   @db.Uuid
+  name         String
+  status       String    // SUCCESS | FAILURE | UNSTABLE | ABORTED
+  branch       String?
+  commit       String?
+  url          String?
+  releaseId    String?   @db.Uuid
+  testRunCount Int       @default(0)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ciConfig  CiConfig? @relation(fields: [ciConfigId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([releaseId])
+  @@map("ci_builds")
+}
+
+model GithubLink {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  configId    String   @db.Uuid
+  entityType  String   // STORY / IDEA / FEATURE / SUPPORT
+  entityId    String   @db.Uuid
+  githubType  String   // COMMIT / PR
+  prNumber    Int?
+  commitSha   String?
+  title       String?
+  state       String?  // OPEN / MERGED / CLOSED
+  url         String?
+  author      String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  config    GithubConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, entityType, entityId])
+  @@map("github_links")
+}
+
+// ===== 访客分享（P2-⑭：无账号通过分享链接只读查看实体）=====
+model ShareLink {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  entityType  String   // STORY / IDEA / FEATURE / SUPPORT / RELEASE
+  entityId    String   @db.Uuid
+  token       String   @unique
+  expiresAt   DateTime?
+  // P2 品牌化路线图分享：分享页标题 / 主题色 / 视图模式（SIMPLE 精简 | FULL 完整 | NARRATIVE 叙事）
+  brandTitle  String?
+  brandColor  String?
+  viewMode    String   @default("FULL")
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  viewCount   Int      @default(0)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("ShareLinkCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId, entityType, entityId])
+  @@map("share_links")
+}
+
+// ===== OKR 目标对齐（P3-A）=====
+model Objective {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  title       String
+  period      String?      // 如 2026-Q4
+  status      String       @default("ACTIVE") // ACTIVE | ARCHIVED
+  sortOrder   Int          @default(0)
+  createdById String?      @db.Uuid
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  keyResults  KeyResult[]
+
+  @@index([workspaceId, status])
+  @@map("objectives")
+}
+
+model KeyResult {
+  id          String   @id @default(uuid()) @db.Uuid
+  objectiveId String   @db.Uuid
+  title       String
+  target      String?  // 可量化描述，如 85% -> 90%
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  objective    Objective         @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+  linkedItems  KeyResultItem[]
+
+  @@index([objectiveId])
+  @@map("key_results")
+}
+
+model KeyResultItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  keyResultId String   @db.Uuid
+  entityType  String   // FEATURE | STORY
+  entityId    String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  keyResult    KeyResult @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+
+  @@unique([keyResultId, entityType, entityId])
+  @@map("key_result_items")
+}
+
+model Attachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  entityType  String
+  entityId    String   @db.Uuid
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  storagePath String
+  uploadedById String  @db.Uuid
+  category    String   @default("FILE") // FILE or SCREENSHOT
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploadedBy  User      @relation(fields: [uploadedById], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([workspaceId])
+  @@map("attachments")
+}
+
+// ===== 用量统计（P3-B：实例匿名上报）=====
+model TelemetryReport {
+  id          String   @id @default(uuid()) @db.Uuid
+  instanceId  String
+  edition     String   // COMMUNITY | ENTERPRISE
+  version     String?
+  counts      Json     // { stories, features, ideas, supports, members, workspaces }
+  reportedAt  DateTime @default(now())
+
+  @@index([instanceId, reportedAt])
+  @@index([reportedAt])
+  @@map("telemetry_reports")
+}
+
+// ===== 客户管理后台（P3-C：License 签发/续期/到期提醒）=====
+model License {
+  id             String    @id @default(uuid()) @db.Uuid
+  customerName   String
+  customerEmail  String
+  licenseKey     String    @unique
+  edition        String    @default("COMMUNITY") // COMMUNITY | PRO | ENTERPRISE
+  seats          Int       @default(5)
+  issuedAt       DateTime  @default(now())
+  expiresAt      DateTime
+  status         String    @default("ACTIVE") // ACTIVE | EXPIRED | REVOKED
+  notes          String?
+  signature      String? // I12 RSA 签名（key.edition.expiresAt.seats 私钥签名，离线验签防伪造）
+  lastSeenAt     DateTime? // 企业版活跃：校验 license 时更新（方案 A 扩展）
+  lastVersion    String?   // 最后一次校验的版本号
+  createdById    String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([expiresAt])
+  @@map("licenses")
+}
+
+// ===== 实例心跳（方案 B：更新检查通道，社区版+企业版统一）=====
+model InstanceHeartbeat {
+  id          String   @id @default(uuid()) @db.Uuid
+  instanceId  String
+  version     String?
+  edition     String   @default("COMMUNITY")
+  lastSeenAt  DateTime @default(now())
+  checkCount  Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  @@unique([instanceId])
+  @@index([lastSeenAt])
+  @@map("instance_heartbeats")
+}
+
+model EntityRelation {
+  id               String       @id @default(uuid()) @db.Uuid
+  workspaceId      String       @db.Uuid
+  sourceEntityType EntityType
+  sourceEntityId   String       @db.Uuid
+  targetEntityType EntityType
+  targetEntityId   String       @db.Uuid
+  relationType     RelationType
+  createdAt        DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceEntityType, sourceEntityId])
+  @@index([targetEntityType, targetEntityId])
+  @@map("entity_relations")
+}
+
+// ============================================================
+// P0：客户反馈门户 + 投票 + 主题聚合 + 优先级评分（2026-08-14）
+// ============================================================
+
+// 投票：内部用户（voterUserId）与门户客户（voterEmail）双维度去重
+model Vote {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  entityType  EntityType // IDEA | SUPPORT | FEATURE
+  entityId    String     @db.Uuid
+  voterUserId String?    @db.Uuid // 内部登录用户
+  voterEmail  String?             // 门户客户（feedbackPortalRequireEmail 时必填）
+  voterName   String?
+  createdAt   DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, voterUserId])
+  @@unique([entityType, entityId, voterEmail])
+  @@index([workspaceId, entityType, entityId])
+  @@map("votes")
+}
+
+// 主题：把多条反馈归并为产品主题（轻量，不分配实体编码）
+model Theme {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  title       String
+  description String?  @db.Text
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entities  EntityTheme[]
+
+  @@index([workspaceId])
+  @@map("themes")
+}
+
+// 主题 ↔ 反馈项 关联
+model EntityTheme {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  entityType  EntityType // IDEA | SUPPORT | FEATURE
+  entityId    String     @db.Uuid
+  themeId     String     @db.Uuid
+  createdAt   DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  theme     Theme     @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, themeId])
+  @@index([themeId])
+  @@map("entity_themes")
+}
+
+// 优先级评分：独立表（不侵入实体表），RICE/ICE/CUSTOM 公式计算结果落 weightedScore
+model Score {
+  id            String     @id @default(uuid()) @db.Uuid
+  workspaceId   String     @db.Uuid
+  entityType    EntityType // IDEA | SUPPORT | FEATURE
+  entityId      String     @db.Uuid
+  model         String     @default("RICE") // RICE | ICE | CUSTOM
+  dimensions    Json // { reach: 100, impact: 3, confidence: 0.8, effort: 2, ease: 3, ... }
+  weightedScore Float
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId])
+  @@index([workspaceId, entityType, entityId])
+  @@map("scores")
+}
+
+// I7 评分历史快照（2026-08-18 P1）：每次保存评分时留痕，供趋势曲线（老板拍板：仅保存时快照）
+model ScoreHistory {
+  id            String     @id @default(uuid()) @db.Uuid
+  workspaceId   String     @db.Uuid
+  entityType    EntityType
+  entityId      String     @db.Uuid
+  model         String     @default("RICE")
+  dimensions    Json
+  weightedScore Float
+  createdAt     DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId, createdAt])
+  @@map("score_history")
+}
+
+// ============================================================
+// Knowledge Base
+// ============================================================
+
+model KbSpace {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  slug        String
+  icon        String?
+  description String?  @db.Text
+  sortOrder   Int      @default(0)
+  visibility  String   @default("everyone") // everyone, member, admin
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pages     KbPage[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@map("kb_spaces")
+}
+
+model KbPage {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  spaceId     String?  @db.Uuid
+  parentId    String?  @db.Uuid
+  path        String?                       // materialized path
+  sortOrder   Int      @default(0)
+  title       String
+  slug        String
+  content     Json?                         // Tiptap/ProseMirror JSON
+  contentText String?  @db.Text             // plain text for search
+  status      String   @default("draft")    // draft | published | archived
+  version     Int      @default(1)
+  // G1 知识库 P1-B：页面级权限（2026-08-16 老板拍板：SPACE 继承空间 + PRIVATE 角色白名单）
+  visibility     String   @default("SPACE") // SPACE | PRIVATE
+  allowedRoleIds String[] @default([])      // PRIVATE 时可见角色（VIEWER/MEMBER/ADMIN）
+  // G1 知识库 P2-B：全文检索向量（应用层维护，GIN 索引）
+  searchVector   Unsupported("tsvector")?
+  authorId    String   @db.Uuid
+  updaterId   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space     KbSpace?   @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  parent    KbPage?    @relation("PageTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  KbPage[]   @relation("PageTree")
+  author    User       @relation("KbPageAuthor", fields: [authorId], references: [id])
+  updater   User?      @relation("KbPageUpdater", fields: [updaterId], references: [id])
+  comments  KbComment[]
+  tags      KbPageTag[]
+  links     KbPageLink[]
+  versions  KbPageVersion[]
+
+  @@unique([workspaceId, spaceId, slug])
+  @@index([workspaceId])
+  @@index([parentId])
+  @@index([spaceId])
+  @@index([status])
+  @@index([searchVector], type: Gin)
+  @@map("kb_pages")
+}
+
+// G1 知识库 P1-A：KbPage ↔ 研发工作项双向关联（2026-08-16 老板拍板：轻量表，不污染 EntityRelation）
+model KbPageLink {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  pageId      String   @db.Uuid
+  entityType  String   // IDEA|FEATURE|STORY|SUPPORT|RELEASE|TEST_CASE
+  entityId    String   @db.Uuid
+  linkType    String   @default("REFERENCE") // REFERENCE | GENERATED_FROM | SUPPORTS
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  page      KbPage    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("KbPageLinkCreator", fields: [createdById], references: [id])
+
+  @@unique([pageId, entityType, entityId])
+  @@index([workspaceId, entityType, entityId])
+  @@map("kb_page_links")
+}
+
+// G1 知识库 P2-A：页面版本快照（diff 预览 + 一键回滚）
+model KbPageVersion {
+  id              String   @id @default(uuid()) @db.Uuid
+  pageId          String   @db.Uuid
+  version         Int
+  contentSnapshot Json?
+  editorId        String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  page   KbPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  editor User   @relation("KbPageVersionEditor", fields: [editorId], references: [id])
+
+  @@unique([pageId, version])
+  @@index([pageId])
+  @@map("kb_page_versions")
+}
+
+model KbComment {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  pageId      String   @db.Uuid
+  parentId    String?  @db.Uuid
+  authorId    String   @db.Uuid
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  page      KbPage    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parent    KbComment? @relation("CommentThread", fields: [parentId], references: [id], onDelete: SetNull)
+  replies   KbComment[] @relation("CommentThread")
+  author    User      @relation("KbCommentAuthor", fields: [authorId], references: [id])
+
+  @@index([pageId])
+  @@index([workspaceId])
+  @@map("kb_comments")
+}
+
+model KbTag {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @db.Uuid
+  name        String
+  slug        String
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pages     KbPageTag[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@map("kb_tags")
+}
+
+model KbPageTag {
+  pageId String @db.Uuid
+  tagId  String @db.Uuid
+
+  page KbPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  tag  KbTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([pageId, tagId])
+  @@map("kb_page_tags")
+}
+
+model TodoItem {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @db.Uuid
+  ideaId        String    @db.Uuid
+  title         String
+  description   String?   @db.Text
+  assigneeId    String    @db.Uuid
+  dueDate       DateTime?
+  completedAt   DateTime?
+  completedById String?   @db.Uuid
+  createdById   String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  idea      Idea      @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  assignee  User      @relation("TodoAssignee", fields: [assigneeId], references: [id])
+  createdBy User      @relation("TodoCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId, ideaId])
+  @@index([assigneeId])
+  @@map("todo_items")
+}
+
+model InviteCode {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  note        String?
+  maxUses     Int       @default(1)
+  usedCount   Int       @default(0)
+  expiresAt   DateTime?
+  active      Boolean   @default(true)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([active])
+  @@map("invite_codes")
+}
+
+model RegistrationWhitelist {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  note      String?
+  createdById String? @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@map("registration_whitelist")
+}
+
+// ===== Phase 1: 轻量测试闭环 =====
+// TestCase = 用例定义（可复用）；TestRun = 一次 Release 回归里的执行结果。
+// MVP 不做独立 TestPlan 实体——"测试计划" = Release 关联一组用例。
+model TestCase {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @db.Uuid
+  code           String?  @unique // {WS}-TC-{seq}
+  title          String
+  description    String?  @db.Text // 前置条件/目的
+  type           String   @default("FEATURE") // FEATURE|PERFORMANCE|SECURITY|API（禅道迁移对齐）
+  steps          Json?              // [{order, action, expected}] —— MVP 用 JSON，将来抽 TestStep 子表
+  expectedResult String?  @db.Text // 无步骤的简单用例直接写预期结果
+  priority       String   @default("P2")
+  status         String   @default("ACTIVE") // ACTIVE | DEPRECATED
+  storyId        String?  @db.Uuid // 主链接：验证哪个任务（需求→开发→测试闭环）
+  releaseId      String?  @db.Uuid // 可选：回归套件归属
+  createdById    String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  story     Story?    @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  release   Release?  @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  createdBy User      @relation("TestCaseCreator", fields: [createdById], references: [id])
+  testRuns  TestRun[]
+  planCases TestPlanCase[]
+
+  @@index([workspaceId, storyId])
+  @@index([workspaceId, releaseId])
+  @@map("test_cases")
+}
+
+model TestRun {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @db.Uuid
+  testCaseId   String   @db.Uuid
+  planId       String?  @db.Uuid // P1-B：从哪个 TestPlan 派生的走查批次（批次标记，不参与唯一性）
+  releaseId    String?  @db.Uuid // 属于哪个 Release 的回归执行
+  status       String   @default("UNTESTED") // PASS | FAIL | BLOCKED | UNTESTED
+  actualResult String?  @db.Text
+  supportId    String?  @db.Uuid // 失败一键建缺陷后回链
+  executedById String?  @db.Uuid
+  executedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  testCase   TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  release    Release?  @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  support    Support?  @relation(fields: [supportId], references: [id], onDelete: SetNull)
+  plan       TestPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  executedBy User?     @relation("TestRunExecutor", fields: [executedById], references: [id])
+
+  @@unique([testCaseId, releaseId]) // 同一用例在同一 Release 只留一条，重跑即覆盖
+  @@index([workspaceId, status])
+  @@map("test_runs")
+}
+
+// ===== Phase 4: TestPlan 命名计划实体 =====
+// 一组测试用例的命名批次（回归计划/发布验收/专项计划）。执行仍走 TestRun
+// （按 testCaseId+releaseId 覆盖更新），TestPlan 负责编排与进度汇总。
+model TestPlan {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  releaseId   String?   @db.Uuid // 关联发布周期（回归计划）；空 = 跨周期专项计划
+  name        String
+  description String?   @db.Text
+  status      String    @default("DRAFT") // DRAFT | ACTIVE | COMPLETED | ARCHIVED
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  release   Release?     @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  createdBy User         @relation("TestPlanCreator", fields: [createdById], references: [id])
+  cases     TestPlanCase[]
+  runs      TestRun[]     // P1-B：从本计划派生的走查批次
+
+  @@index([workspaceId, releaseId])
+  @@map("test_plans")
+}
+
+model TestPlanCase {
+  id         String   @id @default(uuid()) @db.Uuid
+  testPlanId String   @db.Uuid
+  testCaseId String   @db.Uuid
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  testPlan TestPlan  @relation(fields: [testPlanId], references: [id], onDelete: Cascade)
+  testCase TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+
+  @@unique([testPlanId, testCaseId])
+  @@index([testCaseId])
+  @@map("test_plan_cases")
+}
+
+// ===== Phase 4: SCIM 2.0 用户与组配置 =====
+// Pinecone 作为 SCIM 服务提供者（RFC 7643/7644），接收 IdP（Entra/Okta 等）的用户/组预配。
+// 端点：/api/workspaces/:wsId/scim/v2/*（Bearer token 鉴权）。
+// SCIM User → Pinecone User（email 匹配 + 入工作区）；SCIM Group → 工作区角色容器（组名映射角色，实现 RBAC）。
+model ScimConfig {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @unique @db.Uuid
+  enabled           Boolean  @default(false)
+  tokenHash         String? // sha256(bearer token)；明文仅生成时返回一次
+  groupRoleMappings Json?   // 可选：[{ groupName: string, role: 'ADMIN'|'MEMBER'|'VIEWER' }]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("scim_configs")
+}
+
+model ScimGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  externalId  String? // IdP 侧 group id（唯一）
+  displayName String
+  role        String   @default("MEMBER") // ADMIN | MEMBER | VIEWER
+  memberIds   String[] // Pinecone user ids
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, externalId])
+  @@map("scim_groups")
+}
+
+// ===== Phase 1-方向1: Webhook 交付 =====
+// 订阅事件列表约定：['*'] = 全部事件；否则为具体事件名（如 ['TEST_CASE.CREATED','TEST_CASE.UPDATED']）。
+// secret 只存 SHA-256 哈希，明文仅创建时返回一次（用于接收方验证 HMAC 签名）。
+model WebhookEndpoint {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @db.Uuid
+  name            String
+  url             String    @db.Text
+  secretHash      String
+  events          String[]  @default([]) // ['*'] 或事件名列表
+  format          String    @default("JSON") // JSON | SLACK | WECOM（企业微信机器人 markdown） | DINGTALK（钉钉机器人 markdown）
+  active          Boolean   @default(true)
+  lastStatus      String? // OK | FAILED | 最近一次投递结果
+  lastDeliveredAt DateTime?
+  createdById     String    @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("WebhookCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId, active])
+  @@map("webhook_endpoints")
+}
+
+// I2 入站消息命令（2026-08-18 P1）：企微接收消息服务器 / 钉钉 Stream 机器人配置
+model WebhookInbound {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @db.Uuid
+  platform       String // WECOM | DINGTALK
+  name           String
+  token          String? // 企微回调 Token（验签用）；钉钉 stream 模式无
+  encodingAESKey String? // 企微 EncodingAESKey（AES-256-CBC 解密，43 位 base64 去尾 =）
+  callbackPath   String // 回调标识：GET/POST /webhooks/inbound/:callbackPath（企微）；钉钉 stream 无
+  commandPrefix  String   @default("/pinecone") // 命令前缀
+  active         Boolean  @default(true)
+  createdById    String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("WebhookInboundCreator", fields: [createdById], references: [id])
+
+  @@unique([workspaceId, platform])
+  @@map("webhook_inbound")
+}
+
+// ===== Phase 0-3: 事件总线（outbox 模式）=====
+// Webhook 交付 / 审计日志 / 通知扩展 三方共用的持久化事件流。
+// Service 在业务事务内 publish()，后台 consumer 按 status 拉取投递。
+model EventOutbox {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String?  @db.Uuid // 平台级事件（如 SSO 登录审计）可为 null
+  entityType  String             // IDEA/FEATURE/STORY/SUPPORT/TEST_CASE/RELEASE/...（String 便于扩展）
+  entityId    String?
+  action      String             // CREATED/UPDATED/STATUS_CHANGED/DELETED/TIME_LOGGED/API_CALL/...
+  payload     Json?              // 事件载荷（业务数据快照，供 Webhook 透传/审计留档）
+  status      String   @default("PENDING") // PENDING | CLAIMED | DELIVERED | FAILED
+  attempts    Int      @default(0)
+  lastError   String?  @db.Text
+  // B5 修复（2026-08-19 上线前全检）：原子认领 + 指数退避重试
+  claimedAt   DateTime?          // 被消费方原子认领的时间（崩溃恢复：CLAIMED 超时重新入队）
+  nextRetryAt DateTime?          // 退避后的最早重试时间（PENDING + nextRetryAt<=now 才可认领）
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([workspaceId, createdAt])
+  @@map("event_outbox")
+}
+
+// ===== Phase 0-3: API Token 体系 =====
+// 外部 API 鉴权凭证；Webhook 的 HMAC 签名密钥体系（Phase 1）复用同一凭证模型。
+// 只存 SHA-256 哈希，明文仅在创建时返回一次。
+model ApiToken {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  prefix      String             // 展示用前缀（token 前 8 位），用于列表辨识与吊销定位
+  tokenHash   String             // SHA-256(token)，不可逆
+  scopes      String[]  @default([]) // 预留：read/write/ideas/features/...
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("ApiTokenCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId, revokedAt])
+  @@map("api_tokens")
+}
+
+// ===== Phase 1-方向1: CSV 导入任务 =====
+// 上传 → 解析 → 预览（PREVIEW）→ 提交映射 → 执行（RUNNING → COMPLETED/PARTIAL/FAILED）。
+// errors 记录逐行失败原因（行号从 2 开始 = 表头下一行），导入全程留痕可审计。
+model ImportJob {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @db.Uuid
+  entityType    String // IDEA | SUPPORT | TEST_CASE
+  fileName      String
+  columnHeaders String[]
+  rowCount      Int
+  preview       Json? // 前 10 行数据（列 index 键）
+  mapping       Json? // { columnIndex: { field: string, valueMap: { from: to } } }
+  status        String    @default("PREVIEW") // PREVIEW|RUNNING|COMPLETED|PARTIAL|FAILED
+  successCount  Int       @default(0)
+  failCount     Int       @default(0)
+  errors        Json? // [{ row: number, message: string }]
+  createdById   String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("ImportCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@map("import_jobs")
+}
+
+// ===== Phase 1-方向3: SSO (OIDC) =====
+// clientSecret 用 AES-256-GCM 加密存储（secret-cipher.ts）。
+// domainWhitelist：允许登录的邮箱域名白名单（空数组 = 不限制）；SSO 用户自动加入该工作区（MEMBER）。
+model SsoProvider {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @db.Uuid
+  name           String // 显示名（如「企业微信 SSO」「Microsoft Entra」）
+  providerType   String    @default("OIDC") // OIDC | SAML
+  issuer         String    @db.Text // OIDC: issuer URL；SAML: IdP entityID
+  clientId       String    @db.Text // OIDC: client_id；SAML: SP Entity ID（spEntityId 冗余）
+  clientSecret   String    @db.Text // AES-256-GCM 密文（OIDC）；SAML 留空
+  scopes         String    @default("openid profile email")
+  idpMetadataXml String?   @db.Text // SAML: IdP 元数据 XML（SSO URL + 签名证书）
+  spEntityId     String?   @db.Text // SAML: 本系统 SP 实体 ID
+  domainWhitelist String[] @default([]) // 允许登录的邮箱域名，如 ["company.com"]
+  active         Boolean   @default(true)
+  createdById    String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("SsoProviderCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId, active])
+  @@map("sso_providers")
+}
+
+// ===== P2: 实体码原子计数器（消除 scan+increment 竞态，O(1) 分配） =====
+// seq 通过单条原子 UPSERT（ON CONFLICT DO UPDATE ... RETURNING）自增，
+// 替代 code-generator 的「全表扫描找 max + 乐观重试」。
+model EntityCounter {
+  workspaceId String @db.Uuid
+  entityType  String // IDEA | FEATURE | SUPPORT | STORY | TEST_CASE
+  seq         Int    @default(0)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, entityType])
+  @@map("entity_counters")
+}
+
+// ===== G1-P1-③：自定义仪表盘（2026-08-16 老板决策：DB 工作区级共享） =====
+// 每工作区一张，config 存卡片布局 JSON；卡片类型与报表页一致（overview/burndown/velocity/time/discovery/quality/pivot）
+model Dashboard {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String   @default("我的报表")
+  config      Json     @default("{}") // { cards: [{ id, type, title, params }] }
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("DashboardCreator", fields: [createdById], references: [id])
+
+  // P1 多仪表盘（2026-08-19）：每工作区可建多个盘，去 workspaceId unique（保留索引）
+  @@index([workspaceId])
+  @@map("dashboards")
+}
+
+// ===== G1-P2-③：定时报表订阅（2026-08-16 老板决策：站内通知） =====
+// Cron 每日 08:00 聚合关键指标 → 写 Notification 表（接收者=订阅创建者）
+model ReportSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  name        String
+  schedule    String   @default("DAILY") // DAILY | WEEKLY
+  enabled     Boolean  @default(true)
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("ReportSubscriptionCreator", fields: [createdById], references: [id])
+
+  @@index([workspaceId])
+  @@map("report_subscriptions")
+}
+
+// I11 插件市场（2026-08-18 P2 骨架）：工作区已安装插件（marketplace 清单为内置常量，MVP 不做真实分发）
+model InstalledPlugin {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  pluginId    String // 清单中的插件标识（如 webhook-advanced / report-templates）
+  name        String
+  version     String
+  description String?
+  config      Json?
+  installedById String @db.Uuid
+  createdAt   DateTime @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  installedBy  User      @relation("PluginInstaller", fields: [installedById], references: [id])
+
+  @@unique([workspaceId, pluginId])
+  @@index([workspaceId])
+  @@map("installed_plugins")
+}
+
+// ===== 平台级设置（2026-08-21）：key-value 存储，敏感值（如 SMTP 授权码）经
+// secret-cipher（AES-256-GCM, FIELD_ENCRYPTION_SECRET）加密后落 value 字段 =====
+model Setting {
+  key       String   @id
+  value     String   @db.Text // JSON 序列化；isSecret=true 时内部字段已加密
+  isSecret  Boolean  @default(false) @map("is_secret")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("settings")
+}

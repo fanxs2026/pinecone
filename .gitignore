@@ -1,0 +1,107 @@
+.next/
+.next-dev/
+# 依赖与构建产物
+node_modules/
+dist/
+.next/
+.turbo/
+generated/
+*.tsbuildinfo
+
+# 环境变量（含密钥，绝不提交）
+.env
+.env.local
+.env.prod
+.env.staging
+.env.test
+.env.*.local
+!.env.example
+!docker/.env.prod.example
+
+# 本地数据 / 敏感目录（绝不提交）
+pgdata/
+# 根目录数据目录（知识库协同持久化等运行时数据）；勿写裸 data/（会误伤子目录）
+/data/
+# 只忽略根目录上传目录；勿写裸 uploads/（会误伤 apps/backend/src/modules/uploads）
+/uploads/
+backups/
+*.dump
+部署方法.txt
+
+# 本地记忆与工作区缓存
+.codegraph/
+.dockertest/
+.dockerignore
+.git.bak/
+.logs/
+.omo/
+.pnpm-store/
+.pnpm-store-tmp/
+.turbo/
+.ui-smoke-profile/
+.workbuddy/
+.git.bak*/
+
+# 根目录诊断/临时脚本（_ 开头）
+/_*.js
+/_*.mjs
+/_*.cjs
+/_*.sql
+/_*.py
+/_tmp_*
+/_*.txt
+
+# 根目录误创空文件
+/pnpm
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 测试产物
+coverage/
+scripts/ui-smoke/shots/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# HTTPS 证书（本地自签名，不提交；生产证书也不入库）
+certs/
+
+# ── 公开仓库安全：含测试凭据的开发脚本/报告（本地保留，不提交）──
+apps/backend/scripts/
+apps/backend/test-comment.cjs
+apps/backend/test-comment.mjs
+docker/postgres/init/01-init.sql
+scripts/ui-smoke/
+
+docker/*.bak
+
+
+
+# 发布镜像包（zip/tar 交付产物不入库，放 releases/网盘）
+deliverable-images/*.zip
+deliverable-images/*.tar
+
+# gstack 交付文档（本地工作区保留，不入库）
+deliverables/gstack/
+.git_destroyed_by_filterrepo/
+
+# 设计文档 / 企业版内部规划（一概不进公开仓库，仅本地保留）—— requirement #3
+deliverables/docs/
+deliverables/docs/design-docs/
+deliverables/edition-isolation-plan-1.0.0.md
+deliverables/sso-enterprise-guide-1.0.0.md
+STATUS_COLORS_DESIGN.md
+
+
+# Open Core: 企业版 overlay（不进公开仓库）
+../pinecone-overlay/
+
+# backup snapshots (never commit)
+.git.before-*/
+.git.bak/
