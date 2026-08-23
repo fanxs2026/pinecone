@@ -72,6 +72,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Create shadow database for Prisma migrations (must differ from main DB)
+      - name: Create shadow database
+        run: psql "postgresql://ci:ci@localhost:5432/ci" -c "CREATE DATABASE ci_shadow;"
+
       # F-10 门禁（2026-08-19 全检）：依赖漏洞 SCA。
       # 2026-08-22 调整：前端 high（sharp/postcss/nanoid）已通过升级 Next 16.3.2 消除；
       # 后端 high 中 socket.io-parser/brace-expansion/js-yaml 已用 pnpm overrides 修复。
@@ -84,7 +88,7 @@ jobs:
         run: pnpm --filter backend exec prisma generate
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
 
       # P0#1（2026-08-21）：迁移链回归门禁——在空库上全量重放迁移，
       # 一旦迁移链缺失/断裂（如 db push 表无迁移）CI 立即红，防止回归。
@@ -92,7 +96,7 @@ jobs:
         run: pnpm --filter backend exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
 
       - name: Typecheck (backend)
         run: pnpm --filter backend typecheck
@@ -109,7 +113,7 @@ jobs:
         run: pnpm --filter backend test:e2e
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
           REGISTRATION_MODE: open
           REGISTRATION_ADMIN_EMAILS: e2e-admin@test.local
 
