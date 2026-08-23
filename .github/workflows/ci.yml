@@ -116,6 +116,9 @@ jobs:
           SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
           REGISTRATION_MODE: open
           REGISTRATION_ADMIN_EMAILS: e2e-admin@test.local
+          JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET }}
+          REDIS_URL: redis://localhost:6379
 
       - name: Build (backend)
         run: pnpm --filter backend build
