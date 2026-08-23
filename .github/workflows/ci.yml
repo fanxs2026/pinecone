@@ -36,11 +36,6 @@ jobs:
           --health-retries 5
     env:
       NODE_ENV: test
-      # Phase 0-2（安全官 P0-2）：不再硬编码测试密钥到仓库。
-      # 请在仓库 Settings → Secrets and variables → Actions 配置：
-      #   CI_JWT_ACCESS_SECRET / CI_JWT_REFRESH_SECRET（任意高强度随机串即可，仅 CI 测试用）
-      JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET }}
-      JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET }}
       REDIS_URL: redis://localhost:6379
     steps:
       - name: Checkout
@@ -69,6 +64,13 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Generate JWT secrets for CI (no need to store in GitHub secrets)
+      - name: Generate CI JWT secrets
+        id: jwt-secrets
+        run: |
+          echo "JWT_ACCESS_SECRET=$(openssl rand -hex 32)" >> $GITHUB_OUTPUT
+          echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)" >> $GITHUB_OUTPUT
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -89,6 +91,8 @@ jobs:
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
           SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
+          JWT_ACCESS_SECRET: ${{ steps.jwt-secrets.outputs.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ steps.jwt-secrets.outputs.JWT_REFRESH_SECRET }}
 
       # P0#1（2026-08-21）：迁移链回归门禁——在空库上全量重放迁移，
       # 一旦迁移链缺失/断裂（如 db push 表无迁移）CI 立即红，防止回归。
@@ -97,6 +101,8 @@ jobs:
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
           SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
+          JWT_ACCESS_SECRET: ${{ steps.jwt-secrets.outputs.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ steps.jwt-secrets.outputs.JWT_REFRESH_SECRET }}
 
       - name: Typecheck (backend)
         run: pnpm --filter backend typecheck
@@ -116,8 +122,8 @@ jobs:
           SHADOW_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_shadow
           REGISTRATION_MODE: open
           REGISTRATION_ADMIN_EMAILS: e2e-admin@test.local
-          JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET }}
-          JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET }}
+          JWT_ACCESS_SECRET: ${{ steps.jwt-secrets.outputs.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ steps.jwt-secrets.outputs.JWT_REFRESH_SECRET }}
           REDIS_URL: redis://localhost:6379
 
       - name: Build (backend)
