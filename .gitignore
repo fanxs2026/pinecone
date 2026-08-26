@@ -31,7 +31,6 @@ backups/
 # 本地记忆与工作区缓存
 .codegraph/
 .dockertest/
-.dockerignore
 .git.bak/
 .logs/
 .omo/

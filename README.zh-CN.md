@@ -3,7 +3,7 @@
 > 中文版 README。英文主版请见 [README.md](./README.md)。
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.2.0-green.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)]()
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)]()
 
 Pinecone 是一个面向企业的需求管理平台，覆盖**需求、特性、任务、支持单**的全生命周期管理，并延伸出完整的**产品发现层（客户反馈门户 / 投票 / 主题聚合 / 优先级评分 RICE·ICE）、测试闭环（用例 / 执行 / 计划 / CI 集成 / 手动走查）、开放平台（Webhook / CSV 导入 / 通用 CI 回写）、企业集成（SSO OIDC·SAML + SCIM 预配）、治理安全（审计 / 加密备份 / 回收站）与智能化体验（AI 摘要 / PWA / 甘特 / 公开路线图叙事）**。

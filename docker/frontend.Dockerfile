@@ -1,5 +1,10 @@
 FROM node:22-alpine AS builder
 
+# 版本（社区版 / 企业版）。前端版本身份在运行时由 /api/bootstrap 下发，
+# 此处 EDITION 仅用于保持与后端一致的构建语义（当前前端 overlay 为空，属安全 no-op）。
+ARG EDITION=community
+ARG COMMIT_SHA=unknown
+
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate && \
     pnpm config set registry https://registry.npmmirror.com
@@ -13,6 +18,17 @@ RUN pnpm install --frozen-lockfile
 
 # 分步 COPY：绝不 COPY 整个 apps/frontend 目录（会带进宿主 node_modules，破坏容器内依赖链接）
 COPY apps/frontend/src apps/frontend/src
+
+# ── 企业版 overlay 注入（BuildKit 外部构建上下文 eeoverlay）──
+# 必须在 COPY src 之后、build 之前注入，否则 COPY apps/frontend/src 会覆盖注入的企业前端文件。
+# 社区版：scaffold 仅含空 frontend/admin/ee 目录，GUARD 跳过。
+# 企业版：<overlay>/frontend/admin/ee/*  ->  apps/frontend/src/app/(dashboard)/admin/
+COPY --from=eeoverlay /frontend/admin/ee ./_ee_fe
+RUN if [ -d ./_ee_fe ] && [ -n "$(ls -A ./_ee_fe 2>/dev/null)" ]; then \
+      cp -rn ./_ee_fe/. "apps/frontend/src/app/(dashboard)/admin/" 2>/dev/null || true; \
+      rm -rf ./_ee_fe; \
+    fi
+
 COPY apps/frontend/public apps/frontend/public
 COPY apps/frontend/next.config.ts apps/frontend/tsconfig.json apps/frontend/postcss.config.mjs apps/frontend/next-env.d.ts apps/frontend/
 # NEXT_PUBLIC_* vars are inlined at build time — inject the API/WS URL here
@@ -29,6 +45,8 @@ RUN pnpm --filter frontend build
 # ── Production image ──
 FROM node:22-alpine
 
+ARG COMMIT_SHA=unknown
+
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -38,6 +56,8 @@ COPY --from=builder /app/apps/frontend/.next/standalone ./
 # 静态资源与 public 需单独拷贝（standalone 不包含），且要落在 server 的 app dir（apps/frontend）下
 COPY --from=builder /app/apps/frontend/.next/static ./apps/frontend/.next/static
 COPY --from=builder /app/apps/frontend/public ./apps/frontend/public
+
+LABEL pinecone.commit="${COMMIT_SHA}"
 
 EXPOSE 3000
 # 直启 standalone server（不再 sh -c next start）

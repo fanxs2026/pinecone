@@ -1,0 +1,136 @@
+# Pinecone 社区版（Community Edition）生产部署（postgres + redis + backend + frontend）
+# 用法：PINE_IMAGE_TAG=vX.Y.Z-<sha> docker compose -f docker-compose.ce.yml --env-file docker/.env.ce up -d
+# 镜像由 scripts/release-images.sh ce 构建：pinecone-ce-backend / pinecone-ce-frontend
+# 社区版编译产物不含任何企业代码（零泄露，符合 AGPL）。
+
+services:
+  postgres:
+    image: postgres:18.4
+    container_name: pinecone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pinecone
+      POSTGRES_USER: pinecone_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      # postgres 18.4（docker-library/postgres#1259）：数据目录改为 major-version 子目录，
+      # 必须单点挂载 /var/lib/postgresql（旧路径 /var/lib/postgresql/data 会被识别为未迁移库而拒绝启动）
+      - postgres-data:/var/lib/postgresql
+      # 只建角色/权限（01-init.sh）；【建表统一走 prisma migrate deploy】
+      - ./docker/postgres/init-v2:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinecone_admin -d pinecone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pinecone-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: pinecone-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pinecone-network
+
+  backend:
+    # image 与 build 并存：离线分发包直接 load pinecone-ce-backend.tar 后 compose 用固定镜像名，
+    # 不依赖目录名（避免 compose 默认镜像名=目录名-backend 触发无源码重建失败）；源码用户加 --build 仍可重建
+    # 条件 Go：发布必须用不可变 tag（PINE_IMAGE_TAG=vX.Y.Z-<sha>），禁止以 :latest 作为回滚凭据
+    image: pinecone-ce-backend:${PINE_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        # 记录构建来源 commit（回滚/审计时确认版本）
+        COMMIT_SHA: ${COMMIT_SHA:-unknown}
+        EDITION: community
+    labels:
+      - "pinecone.commit=${COMMIT_SHA:-unknown}"
+    container_name: pinecone-ce-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+      # B4 修复：发布 kb-collab WS 端口，生产可达
+      - "${KB_COLLAB_PORT:-3002}:3002"
+    volumes:
+      # Persist uploaded files (容器重启不丢附件)
+      - ./uploads:/app/uploads
+      # I3 协同态持久化：y-leveldb 落盘，重启不丢协同编辑
+      - ./data/kb-collab:/app/data/kb-collab
+      # B4 修复：TLS 证书挂载（HTTPS_CERT_PATH/HTTPS_KEY_PATH 相对 /app 解析）
+      - ./certs:/app/certs:ro
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      KB_COLLAB_PORT: ${KB_COLLAB_PORT:-3002}
+      HTTPS_CERT_PATH: ${HTTPS_CERT_PATH:-certs/pinecone.crt}
+      HTTPS_KEY_PATH: ${HTTPS_KEY_PATH:-certs/pinecone.key}
+      # 最小权限：运行时用 pinecone_app（DML）而非 pinecone_admin（DDL）
+      DATABASE_URL: postgresql://pinecone_app:${APP_DB_PASSWORD}@postgres:5432/pinecone
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:6173}
+      # Cookie 安全：生产走 HTTPS 反代时设 true；默认 false 兼容 http 后端
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # 注册控制：必须显式转发，否则生产容器内默认 fail-closed=whitelist
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
+      REGISTRATION_ADMIN_EMAILS: ${REGISTRATION_ADMIN_EMAILS:-}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_SECURE: ${EMAIL_SECURE:-true}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      # 社区版：企业功能接口全部 403（edition.ts fail-closed 的默认行为，此处显式声明）
+      PINE_EDITION: community
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pinecone-network
+
+  frontend:
+    image: pinecone-ce-frontend:${PINE_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      # NEXT_PUBLIC_* 是 BUILD 时内联进 JS 的，必须通过 build args 传（运行时 environment 不生效）
+      args:
+        NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3000/api}
+        NEXT_PUBLIC_WS_URL: ${WS_URL:-http://localhost:3000/ws}
+        NEXT_PUBLIC_KB_COLLAB_URL: ${KB_COLLAB_URL:-wss://localhost:3002/kb-collab}
+        COMMIT_SHA: ${COMMIT_SHA:-unknown}
+        EDITION: community
+    labels:
+      - "pinecone.commit=${COMMIT_SHA:-unknown}"
+    container_name: pinecone-ce-frontend
+    restart: unless-stopped
+    ports:
+      # 容器内 `next start` 默认监听 3000（前端 Dockerfile EXPOSE 3000）
+      - "${FRONTEND_PORT:-6173}:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - pinecone-network
+
+networks:
+  pinecone-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

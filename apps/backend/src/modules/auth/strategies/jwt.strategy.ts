@@ -36,6 +36,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         extractAccessTokenFromCookie,
       ]),
       ignoreExpiration: false,
+      // 算法钉死：防 alg 混淆/none 算法攻击（OWASP JWT 最佳实践）
+      algorithms: ['HS256'],
       secretOrKey: getSecret('JWT_ACCESS_SECRET', 32),
     });
   }

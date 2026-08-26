@@ -9,6 +9,8 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     super({
       jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
       ignoreExpiration: false,
+      // 算法钉死：防 alg 混淆/none 算法攻击（OWASP JWT 最佳实践）
+      algorithms: ['HS256'],
       secretOrKey: getSecret('JWT_REFRESH_SECRET', 32),
     });
   }

@@ -1,0 +1,120 @@
+# Pinecone 企业版（Enterprise Edition）生产部署（postgres + redis + backend + frontend）
+# 用法：PINE_IMAGE_TAG=vX.Y.Z-<sha> docker compose -f docker-compose.ee.yml --env-file docker/.env.ee up -d
+# 镜像由 scripts/release-images.sh ee 构建：pinecone-ee-backend / pinecone-ee-frontend
+# 企业版镜像在 build 期注入 pinecone-overlay 的企业模块，运行时 PINE_EDITION=enterprise。
+
+services:
+  postgres:
+    image: postgres:18.4
+    container_name: pinecone-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pinecone
+      POSTGRES_USER: pinecone_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init-v2:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pinecone_admin -d pinecone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pinecone-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: pinecone-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pinecone-network
+
+  backend:
+    image: pinecone-ee-backend:${PINE_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      args:
+        COMMIT_SHA: ${COMMIT_SHA:-unknown}
+        EDITION: enterprise
+    labels:
+      - "pinecone.commit=${COMMIT_SHA:-unknown}"
+    container_name: pinecone-ee-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+      - "${KB_COLLAB_PORT:-3002}:3002"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data/kb-collab:/app/data/kb-collab
+      - ./certs:/app/certs:ro
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      KB_COLLAB_PORT: ${KB_COLLAB_PORT:-3002}
+      HTTPS_CERT_PATH: ${HTTPS_CERT_PATH:-certs/pinecone.crt}
+      HTTPS_KEY_PATH: ${HTTPS_KEY_PATH:-certs/pinecone.key}
+      DATABASE_URL: postgresql://pinecone_app:${APP_DB_PASSWORD}@postgres:5432/pinecone
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:6173}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
+      REGISTRATION_ADMIN_EMAILS: ${REGISTRATION_ADMIN_EMAILS:-}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_SECURE: ${EMAIL_SECURE:-true}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      # 企业版：启用企业功能（SSO/SCIM/审计/CI/Webhook/自动化/API Token/团队/回收站/AI/OKR）
+      PINE_EDITION: enterprise
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pinecone-network
+
+  frontend:
+    image: pinecone-ee-frontend:${PINE_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:3000/api}
+        NEXT_PUBLIC_WS_URL: ${WS_URL:-http://localhost:3000/ws}
+        NEXT_PUBLIC_KB_COLLAB_URL: ${KB_COLLAB_URL:-wss://localhost:3002/kb-collab}
+        COMMIT_SHA: ${COMMIT_SHA:-unknown}
+        EDITION: enterprise
+    labels:
+      - "pinecone.commit=${COMMIT_SHA:-unknown}"
+    container_name: pinecone-ee-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-6173}:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - pinecone-network
+
+networks:
+  pinecone-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

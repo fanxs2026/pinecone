@@ -1,0 +1,25 @@
+# ── Docker 构建上下文排除（避免把本机数据/敏感文件打进镜像）──
+node_modules/
+.next/
+dist/
+coverage/
+pgdata/
+backups/
+uploads/
+certs/
+.env
+.env.*
+!.env.example
+!docker/.env.prod.example
+.workbuddy/
+.git/
+.gitignore
+deliverables/
+*.dump
+*.log
+_*.js
+_*.sql
+_tmp_*
+scripts/
+部署方法.txt
+docker/*.bak
