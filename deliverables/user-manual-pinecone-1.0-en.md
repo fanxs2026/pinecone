@@ -291,6 +291,8 @@ Enterprise Login → SCIM 2.0: generate/reset Token (once); copy SCIM endpoint (
 
 Settings → Webhook/CI config: configure GitHub/GitLab/Gitee source + signing key/API Token; CI calls `POST /ci/results` (HMAC or Bearer) to report JUnit; commit/PR links auto-backlink to entities.
 
+**HMAC signing**: payload is `${timestamp}.${rawBody}` where `timestamp` is the **`X-Pinecone-Timestamp`** header value (milliseconds since epoch, ±5 min window). Include the `X-Pinecone-Timestamp` header (milliseconds since epoch) in every request; server rejects stale or missing timestamps (±5 min window).
+
 ---
 
 ## 14. Governance & Security

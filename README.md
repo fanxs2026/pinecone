@@ -3,7 +3,7 @@
 > English is the primary language for this README. A Chinese version is available at [README.zh-CN.md](./README.zh-CN.md).
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.2.0-green.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)]()
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)]()
 
 Pinecone is an enterprise requirements management platform covering the full lifecycle of **Ideas, Features, Stories and Support tickets**, extended with a complete **product discovery layer (feedback portal / voting / theme aggregation / RICE·ICE priority scoring), a testing loop (cases / runs / plans / CI / manual walkthrough), an open platform (Webhooks / CSV import / generic CI ingestion), enterprise integration (SSO OIDC·SAML + SCIM provisioning), governance & security (audit / encrypted backup / recycle bin), and smart experience (AI summary / PWA / Gantt / public roadmap narrative)**.

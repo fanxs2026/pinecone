@@ -295,6 +295,8 @@ Pinecone 是一套面向产品研发团队的轻量级项目管理系统，覆�
 
 「设置 → Webhook/CI 配置」配置 GitHub/GitLab/Gitee 源与签名密钥/API Token；CI 调用 `POST /ci/results`（HMAC 或 Bearer 双通道认证）上报 JUnit 结果；commit/PR 关联自动回链到实体。
 
+**HMAC 签名**：载荷为 `${timestamp}.${rawBody}`，其中 `timestamp` 为 **`X-Pinecone-Timestamp`** 请求头值（毫秒时间戳，**±5 分钟窗口**）。每次请求必须携带 `X-Pinecone-Timestamp` 头（毫秒时间戳）；服务端拒绝缺失或超出 ±5 分钟窗口的请求。
+
 ---
 
 ## 14. 治理与安全

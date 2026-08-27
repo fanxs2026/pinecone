@@ -8531,7 +8531,7 @@
             "description": ""
           }
         },
-        "summary": "通用 CI 结果回写（build + JUnit 测试结果；X-Pinecone-Signature HMAC 或 Bearer API Token）",
+        "summary": "通用 CI 结果回写（build + JUnit 测试结果；X-Pinecone-Signature HMAC 或 Bearer API Token；HMAC 需携带 X-Pinecone-Timestamp 头，±5min 窗口）",
         "tags": [
           "ci"
         ]
