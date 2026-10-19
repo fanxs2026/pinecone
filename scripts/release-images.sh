@@ -70,7 +70,12 @@ else
   mkdir -p "$EEOVERLAY/backend/modules/ee" "$EEOVERLAY/frontend/admin/ee"
 fi
 
-cleanup() { [ "$CLEANUP_EEOVERLAY" = "1" ] && [ -n "$EEOVERLAY" ] && rm -rf "$EEOVERLAY"; }
+# 临时目录删除失败不应让整个发布流程判失败（某些环境有删除拦截/回收站不可用）
+cleanup() {
+  if [ "$CLEANUP_EEOVERLAY" = "1" ] && [ -n "$EEOVERLAY" ]; then
+    rm -rf "$EEOVERLAY" 2>/dev/null || true
+  fi
+}
 trap cleanup EXIT
 
 echo "==> Edition: $EDITION (ed=$ED)  Tag: $TAG"
@@ -190,16 +195,33 @@ EOS
   fi
 
   # 打包为 zip（仓库根 dist/ 下）
+  # ⚠️ 分隔符坑：Windows 的 Compress-Archive 写出的条目用反斜杠（docker\postgres\...），
+  #    Linux 上解压时反斜杠被当作普通文件名字符 -> 目录结构塌陷、compose 找不到 init 脚本。
+  #    故优先 zip / 7z（二者均按 ZIP 规范写 POSIX '/'），Compress-Archive 仅作最后兜底。
   if command -v zip >/dev/null 2>&1; then
     ( cd "$stage" && zip -r -q -y "$release_zip" . )
   else
-    # 无 zip 时回退到 PowerShell；注意路径要转成 Windows 风格，否则 Compress-Archive 找不到
-    local winstage winzip
-    winstage="$(cygpath -w "$stage")"
-    winzip="$(cygpath -w "$PWD/$release_zip")"
-    powershell -NoProfile -Command "Compress-Archive -Path '${winstage}\*' -DestinationPath '${winzip}' -Force"
+    local z7=""
+    for cand in "$(command -v 7z 2>/dev/null)" \
+                "/c/Program Files/7-Zip/7z.exe" \
+                "/c/Program Files (x86)/7-Zip/7z.exe"; do
+      if [ -n "$cand" ] && [ -x "$cand" ]; then z7="$cand"; break; fi
+    done
+    if [ -n "$z7" ]; then
+      local zipabs
+      zipabs="$(cd "$(dirname "$release_zip")" && pwd)/$(basename "$release_zip")"
+      rm -f "$zipabs" 2>/dev/null || true
+      ( cd "$stage" && "$z7" a -tzip -bso0 -bsp0 "$zipabs" . )
+    else
+      # 无 zip / 7z 时回退到 PowerShell；注意路径要转成 Windows 风格，否则 Compress-Archive 找不到
+      local winstage winzip
+      winstage="$(cygpath -w "$stage")"
+      winzip="$(cygpath -w "$PWD/$release_zip")"
+      echo "WARN: falling back to Compress-Archive — zip entries use backslashes and will break on Linux unzip." >&2
+      powershell -NoProfile -Command "Compress-Archive -Path '${winstage}\*' -DestinationPath '${winzip}' -Force"
+    fi
   fi
-  rm -rf "$stage"
+  rm -rf "$stage" 2>/dev/null || true
   echo "==> Bundle: $release_zip"
 }
 
