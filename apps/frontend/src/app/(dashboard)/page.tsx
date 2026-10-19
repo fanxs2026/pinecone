@@ -8,6 +8,7 @@ import { useWorkspace } from '@/hooks/use-workspace';
 import { useWorkspaceStore } from '@/stores/workspace-store';
 import { workspaceApi, dashboardApi, aiApi, DashboardStats } from '@/lib/api-client';
 import { formatDateTime } from '@/lib/date-utils';
+import { sanitizeSlugInput } from '@/lib/slug';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -226,8 +227,15 @@ export default function DashboardPage() {
   }, []);
 
   const createWs = useMutation({
-    mutationFn: () =>
-      workspaceApi.create({ name: wsName, slug: wsSlug || wsName.toLowerCase().replace(/\s+/g, '-') }).then((r) => r.data),
+    mutationFn: () => {
+      // slug 统一净化：避免 "CEDA Client" 这类含空格的值入库，
+      // 它会连带让知识库空间自动创建失败（空间 slug 只接受 [a-z0-9-]）
+      const slug =
+        sanitizeSlugInput(wsSlug) || sanitizeSlugInput(wsName) || 'workspace';
+      return workspaceApi
+        .create({ name: wsName, slug: slug.length < 2 ? `${slug}-ws`.slice(0, 50) : slug })
+        .then((r) => r.data);
+    },
     onSuccess: (newWs) => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       // Switch to the newly created workspace
@@ -273,7 +281,7 @@ export default function DashboardPage() {
               <Input
                 placeholder="my-project"
                 value={wsSlug}
-                onChange={(e) => setWsSlug(e.target.value)}
+                onChange={(e) => setWsSlug(sanitizeSlugInput(e.target.value))}
               />
               <p className="text-xs text-muted-foreground">
                 {t('wsSlugHint')}
@@ -520,7 +528,7 @@ export default function DashboardPage() {
                 <Input
                   placeholder={t('wsSlugOptional')}
                   value={wsSlug}
-                  onChange={(e) => setWsSlug(e.target.value)}
+                  onChange={(e) => setWsSlug(sanitizeSlugInput(e.target.value))}
                 />
                 <Button
                   onClick={() => createWs.mutate()}

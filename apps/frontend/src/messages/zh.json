@@ -338,7 +338,9 @@
     "templateSet": "已设为模板，可在新建页面时选用",
     "templateSetFailed": "设置失败",
     "selectSpace": "选择知识库空间",
-    "selectSpaceHint": "该工作区存在多个知识库空间，请选择要进入的一个"
+    "selectSpaceHint": "该工作区存在多个知识库空间，请选择要进入的一个",
+    "createSpaceFailed": "知识库空间创建失败",
+    "retry": "重试"
   },
   "kbAi": {
     "title": "AI 问答",

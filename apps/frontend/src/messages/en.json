@@ -338,7 +338,9 @@
     "templateSet": "Saved as template. It now appears in \"Create from template\"",
     "templateSetFailed": "Failed to set template",
     "selectSpace": "Select knowledge base space",
-    "selectSpaceHint": "This workspace has multiple knowledge base spaces. Pick one to enter"
+    "selectSpaceHint": "This workspace has multiple knowledge base spaces. Pick one to enter",
+    "createSpaceFailed": "Failed to create the knowledge base space",
+    "retry": "Retry"
   },
   "kbAi": {
     "title": "AI Q&A",

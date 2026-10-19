@@ -42,7 +42,9 @@ export async function generateEntityCode(
     throw new Error('Workspace not found');
   }
 
-  const projectCode = workspace.slug.toUpperCase();
+  // 防御：slug 含空白（历史脏数据）会产出带空格的编码（如 "CEDA CLIENT-I-1"），
+  // 违反 {SLUG}-{P}-{SEQ} 规范，这里兜底把空白折叠为连字符
+  const projectCode = workspace.slug.toUpperCase().replace(/\s+/g, '-');
 
   // 原子自增：单条 UPSERT ... RETURNING（PostgreSQL 行锁保证并发安全，O(1)）
   const rows: { seq: number }[] = await prisma.$queryRaw`
