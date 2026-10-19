@@ -53,6 +53,10 @@ backups/
 # 根目录误创空文件
 /pnpm
 
+# 根目录一次性运维/调试脚本（含明文连接串，禁止入库）
+/apply_migration_manual.js
+/temporary_db_check.js
+
 # 日志
 *.log
 npm-debug.log*
