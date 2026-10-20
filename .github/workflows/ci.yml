@@ -42,16 +42,25 @@ jobs:
         uses: actions/checkout@v7
 
       # F-12 门禁（2026-08-19 全检）：密钥/凭据泄露扫描（曾发生 .env 误提交历史）
-      # 2026-08-22 修正：改用 --no-git 全量扫描工作区，绕开 gitleaks-action 默认基于
+      # 2026-08-22 修正：改用 --no-git 全量扫描工作区，绕开默认基于
       # "上一次推送 HEAD^..当前 HEAD" 的 diff 区间——仓库历史曾被 filter-branch 改写，
       # 旧基准 SHA 在远端已不存在会导致 `unknown revision` 退出码 1。全量扫描对仓库体量无碍。
+      # 2026-10-20 修正：gitleaks-action@v3 不再接受 `args` 输入（CI 报
+      #   "Unexpected input(s) 'args', valid inputs are ['']"），该参数被静默丢弃，
+      #   于是退回默认 detect 的「git 历史区间」模式，又踩回 unknown revision -> exit 1。
+      #   （另外 v3 要求 GITLEAKS_LICENSE，本项目未配置该 secret。）
+      #   改为直接下载运行 gitleaks 二进制：参数确定生效、无 license 依赖、版本可锁。
+      #   --exit-code=2 保持：2=发现泄露，1=执行错误，两者都会让 job 失败。
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-        with:
-          args: detect --redact --exit-code=2 --report-format=sarif --report-path=results.sarif --no-git
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.18.4
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks version
+          ./gitleaks detect --no-git --redact --exit-code=2 \
+            --config .gitleaks.toml \
+            --report-format=sarif --report-path=results.sarif
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
