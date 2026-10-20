@@ -201,16 +201,27 @@ EOS
   if command -v zip >/dev/null 2>&1; then
     ( cd "$stage" && zip -r -q -y "$release_zip" . )
   else
-    local z7=""
+    # 次选 Python zipfile（scripts/zip-release.py）：同时保证 POSIX '/' 与 755 权限位
+    local py="" z7=""
+    for cand in "$(command -v python3 2>/dev/null)" \
+                "$(command -v python 2>/dev/null)" \
+                "$(command -v py 2>/dev/null)"; do
+      if [ -n "$cand" ]; then py="$cand"; break; fi
+    done
     for cand in "$(command -v 7z 2>/dev/null)" \
                 "/c/Program Files/7-Zip/7z.exe" \
                 "/c/Program Files (x86)/7-Zip/7z.exe"; do
       if [ -n "$cand" ] && [ -x "$cand" ]; then z7="$cand"; break; fi
     done
-    if [ -n "$z7" ]; then
+    if [ -n "$py" ]; then
+      local zipabs
+      zipabs="$(cd "$(dirname "$release_zip")" && pwd)/$(basename "$release_zip")"
+      "$py" "$(dirname "$0")/zip-release.py" "$stage" "$zipabs"
+    elif [ -n "$z7" ]; then
       local zipabs
       zipabs="$(cd "$(dirname "$release_zip")" && pwd)/$(basename "$release_zip")"
       rm -f "$zipabs" 2>/dev/null || true
+      # 注意：7z 不写 unix 权限位（external_attr=0），.sh 解压后无 +x
       ( cd "$stage" && "$z7" a -tzip -bso0 -bsp0 "$zipabs" . )
     else
       # 无 zip / 7z 时回退到 PowerShell；注意路径要转成 Windows 风格，否则 Compress-Archive 找不到
