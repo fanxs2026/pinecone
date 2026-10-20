@@ -12,16 +12,16 @@ allowBuilds:
   prisma: true
   sharp: true
 minimumReleaseAgeExclude:
-  - '@next/env@16.3.2'
-  - '@next/swc-darwin-arm64@16.3.2'
-  - '@next/swc-darwin-x64@16.3.2'
-  - '@next/swc-linux-arm64-gnu@16.3.2'
-  - '@next/swc-linux-arm64-musl@16.3.2'
-  - '@next/swc-linux-x64-gnu@16.3.2'
-  - '@next/swc-linux-x64-musl@16.3.2'
-  - '@next/swc-win32-arm64-msvc@16.3.2'
-  - '@next/swc-win32-x64-msvc@16.3.2'
-  - next@16.3.2
+  - '@next/env@16.3.8'
+  - '@next/swc-darwin-arm64@16.3.8'
+  - '@next/swc-darwin-x64@16.3.8'
+  - '@next/swc-linux-arm64-gnu@16.3.8'
+  - '@next/swc-linux-arm64-musl@16.3.8'
+  - '@next/swc-linux-x64-gnu@16.3.8'
+  - '@next/swc-linux-x64-musl@16.3.8'
+  - '@next/swc-win32-arm64-msvc@16.3.8'
+  - '@next/swc-win32-x64-msvc@16.3.8'
+  - next@16.3.8
 
 # 安全 overrides：升级可向后兼容的传递依赖，消除部分 audit high。
 # - socket.io-parser 4.2.7：@nestjs/platform-socket.io 用的 socket.io 4.x 兼容该修复版（GHSA-2m8v-j782-fhvr）
@@ -29,6 +29,8 @@ minimumReleaseAgeExclude:
 # - js-yaml 4.3.1：@nestjs/swagger 依赖，修复 CVE-2026-59870（GHSA-5p4m）
 # - fast-uri 3.1.5：@prisma/client 内部 ajv 依赖，纯 URI 解析库，向后兼容（GHSA-v2hh/ 7p8r）
 # - deepmerge-ts 8.0.0：@prisma/client 内部 config 依赖，纯合并工具，向后兼容（GHSA-ggr8）
+# - proxy-addr 2.0.8（2026-10-20）：express → proxy-addr 存在 IP 欺骗（IPv4-mapped IPv6
+#   trust subnet，GHSA-jqcg-44mw-7w3h，critical），2.0.8 为补丁版，patch 级向后兼容。
 # 注：multer 属上游锁死（NestJS 11 锁 1.x，API 破坏性），无法在仓库内修复，CI 已降级审计级别跟踪。
 overrides:
   socket.io-parser: '4.2.7'
@@ -36,3 +38,4 @@ overrides:
   js-yaml: '4.3.1'
   fast-uri: '3.1.5'
   deepmerge-ts: '8.0.0'
+  proxy-addr: '2.0.8'
