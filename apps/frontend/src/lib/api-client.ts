@@ -71,13 +71,15 @@ export interface Idea {
   voteCount?: number;
   score?: { model: string; weightedScore: number; dimensions: Record<string, number> } | null;
   themes?: { id: string; title: string }[];
+  /** 工作区自定义属性值，key 为字段定义的 key */
+  customFields?: Record<string, unknown> | null;
 }
 
 export const ideaApi = {
-  list: (wsId: string, params?: { status?: string; category?: string; search?: string; sortBy?: string; themeId?: string; minScore?: number }) =>
+  list: (wsId: string, params?: { status?: string; category?: string; search?: string; sortBy?: string; themeId?: string; minScore?: number; cf?: string }) =>
     apiClient.get<PaginatedResponse<Idea>>(`/workspaces/${wsId}/ideas`, { params }),
   get: (wsId: string, id: string) => apiClient.get<Idea>(`/workspaces/${wsId}/ideas/${id}`),
-  create: (wsId: string, data: { title: string; description?: string; category?: string; status?: string; assigneeId?: string }) =>
+  create: (wsId: string, data: { title: string; description?: string; category?: string; status?: string; assigneeId?: string; customFields?: Record<string, unknown> }) =>
     apiClient.post<Idea>(`/workspaces/${wsId}/ideas`, data),
   update: (wsId: string, id: string, data: Partial<Idea>) =>
     apiClient.patch<Idea>(`/workspaces/${wsId}/ideas/${id}`, data),
@@ -270,14 +272,18 @@ export interface Feature {
   voteCount?: number;
   score?: { model: string; weightedScore: number; dimensions: Record<string, number> } | null;
   themes?: { id: string; title: string }[];
+  /** 承诺完成日（YYYY-MM-DD） */
+  dueDate?: string | null;
+  /** 工作区自定义属性值，key 为字段定义的 key */
+  customFields?: Record<string, unknown> | null;
 }
 
 export const featureApi = {
-  list: (wsId: string, params?: { releaseId?: string; status?: string; assigneeId?: string; priority?: string; parentFeatureId?: string; isEpic?: boolean; pageSize?: number; sortBy?: string; themeId?: string; minScore?: number }) =>
+  list: (wsId: string, params?: { releaseId?: string; status?: string; assigneeId?: string; priority?: string; parentFeatureId?: string; isEpic?: boolean; pageSize?: number; sortBy?: string; themeId?: string; minScore?: number; cf?: string }) =>
     apiClient.get<PaginatedResponse<Feature>>(`/workspaces/${wsId}/features`, { params }),
   get: (wsId: string, id: string) =>
     apiClient.get<Feature>(`/workspaces/${wsId}/features/${id}`),
-  create: (wsId: string, data: { title: string; description?: string; releaseId?: string; priority?: string; assigneeId?: string; parentFeatureId?: string; isEpic?: boolean }) =>
+  create: (wsId: string, data: { title: string; description?: string; releaseId?: string; priority?: string; assigneeId?: string; parentFeatureId?: string; isEpic?: boolean; dueDate?: string | null; customFields?: Record<string, unknown> }) =>
     apiClient.post<Feature>(`/workspaces/${wsId}/features`, data),
   update: (wsId: string, id: string, data: Partial<Feature>) =>
     apiClient.patch<Feature>(`/workspaces/${wsId}/features/${id}`, data),
@@ -314,14 +320,18 @@ export interface Story {
   parentId?: string | null;
   subtaskCount?: number;
   doneCount?: number;
+  /** 承诺完成日（YYYY-MM-DD） */
+  dueDate?: string | null;
+  /** 工作区自定义属性值，key 为字段定义的 key */
+  customFields?: Record<string, unknown> | null;
 }
 
 export const storyApi = {
-  list: (wsId: string, params?: { featureId?: string; status?: string; assigneeId?: string; priority?: string; sprintId?: string; backlog?: boolean; parentId?: string; pageSize?: number }) =>
+  list: (wsId: string, params?: { featureId?: string; status?: string; assigneeId?: string; priority?: string; sprintId?: string; backlog?: boolean; parentId?: string; pageSize?: number; cf?: string }) =>
     apiClient.get<PaginatedResponse<Story>>(`/workspaces/${wsId}/stories`, { params }),
   get: (wsId: string, id: string) =>
     apiClient.get<Story>(`/workspaces/${wsId}/stories/${id}`),
-  create: (wsId: string, data: { featureId: string; title: string; description?: string; acceptanceCriteria?: string; storyPoints?: number; priority?: string; assigneeId?: string; estimateHours?: number; releaseId?: string; teamId?: string; sprintId?: string; parentId?: string }) =>
+  create: (wsId: string, data: { featureId: string; title: string; description?: string; acceptanceCriteria?: string; storyPoints?: number; priority?: string; assigneeId?: string; estimateHours?: number; releaseId?: string; teamId?: string; sprintId?: string; parentId?: string; dueDate?: string | null; customFields?: Record<string, unknown> }) =>
     apiClient.post<Story>(`/workspaces/${wsId}/stories`, data),
   update: (wsId: string, id: string, data: Partial<Story>) =>
     apiClient.patch<Story>(`/workspaces/${wsId}/stories/${id}`, data),
@@ -489,14 +499,18 @@ export interface Support {
   voteCount?: number;
   score?: { model: string; weightedScore: number; dimensions: Record<string, number> } | null;
   themes?: { id: string; title: string }[];
+  /** 承诺完成日（YYYY-MM-DD） */
+  dueDate?: string | null;
+  /** 工作区自定义属性值，key 为字段定义的 key */
+  customFields?: Record<string, unknown> | null;
 }
 
 export const supportApi = {
-  list: (wsId: string, params?: { status?: string; search?: string; sortBy?: string; themeId?: string; minScore?: number }) =>
+  list: (wsId: string, params?: { status?: string; search?: string; sortBy?: string; themeId?: string; minScore?: number; cf?: string }) =>
     apiClient.get<PaginatedResponse<Support>>(`/workspaces/${wsId}/supports`, { params }),
   get: (wsId: string, id: string) =>
     apiClient.get<Support>(`/workspaces/${wsId}/supports/${id}`),
-  create: (wsId: string, data: { title: string; description?: string; status?: string; type?: string; assigneeId?: string; releaseId?: string }) =>
+  create: (wsId: string, data: { title: string; description?: string; status?: string; type?: string; assigneeId?: string; releaseId?: string; dueDate?: string | null; customFields?: Record<string, unknown> }) =>
     apiClient.post<Support>(`/workspaces/${wsId}/supports`, data),
   update: (wsId: string, id: string, data: Partial<Support>) =>
     apiClient.patch<Support>(`/workspaces/${wsId}/supports/${id}`, data),
@@ -651,6 +665,120 @@ export const automationApi = {
   update: (wsId: string, id: string, data: Partial<AutomationRule>) =>
     apiClient.patch<AutomationRule>(`/workspaces/${wsId}/automation-rules/${id}`, data),
   remove: (wsId: string, id: string) => apiClient.delete(`/workspaces/${wsId}/automation-rules/${id}`),
+};
+
+// 工作区自定义属性：定义管理（ADMIN）+ 值渲染（VIEWER 可用）。
+// 配额只统计启用中的字段，归档即释放额度。
+export const CUSTOM_FIELD_TYPES = ['TEXT', 'NUMBER', 'SELECT', 'MULTI_SELECT', 'DATE', 'CHECKBOX', 'URL'] as const;
+export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
+
+export const CUSTOM_FIELD_ENTITY_TYPES = ['IDEA', 'FEATURE', 'STORY', 'SUPPORT'] as const;
+export type CustomFieldEntityType = (typeof CUSTOM_FIELD_ENTITY_TYPES)[number];
+
+export interface CustomFieldOption {
+  value: string;
+  label: string;
+}
+
+export interface CustomFieldDef {
+  id: string;
+  workspaceId: string;
+  entityType: CustomFieldEntityType;
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  options: CustomFieldOption[] | null;
+  isRequired: boolean;
+  defaultValue?: unknown;
+  description?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomFieldQuota {
+  used: number;
+  limit: number;
+}
+
+export interface CustomFieldListResult {
+  items: CustomFieldDef[];
+  quota: CustomFieldQuota;
+}
+
+export interface CustomFieldInput {
+  entityType: CustomFieldEntityType;
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  options?: CustomFieldOption[];
+  isRequired?: boolean;
+  defaultValue?: unknown;
+  description?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export const customFieldApi = {
+  list: (wsId: string, entityType: CustomFieldEntityType, includeInactive = false) =>
+    apiClient.get<CustomFieldListResult>(`/workspaces/${wsId}/custom-fields`, {
+      params: { entityType, includeInactive: includeInactive ? 'true' : undefined },
+    }),
+  create: (wsId: string, data: CustomFieldInput) =>
+    apiClient.post<CustomFieldDef>(`/workspaces/${wsId}/custom-fields`, data),
+  update: (wsId: string, id: string, data: Partial<Omit<CustomFieldInput, 'entityType' | 'key'>>) =>
+    apiClient.patch<CustomFieldDef>(`/workspaces/${wsId}/custom-fields/${id}`, data),
+  remove: (wsId: string, id: string) => apiClient.delete(`/workspaces/${wsId}/custom-fields/${id}`),
+  reorder: (wsId: string, items: { id: string; sortOrder: number }[]) =>
+    apiClient.patch(`/workspaces/${wsId}/custom-fields/reorder`, { items }),
+};
+
+// 列表视图筛选条件：与后端 cf 参数结构一致
+export interface ListFilters {
+  status?: string[];
+  priority?: string[];
+  assigneeId?: string[];
+  customFields?: Record<string, string[]>;
+}
+
+// 保存视图：筛选条件 + 列配置
+export interface SavedView {
+  id: string;
+  workspaceId: string;
+  entityType: CustomFieldEntityType;
+  name: string;
+  filters: ListFilters;
+  columns: string[] | null;
+  isShared: boolean;
+  createdById: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  isMine: boolean;
+  createdBy?: { id: string; name?: string | null; email: string };
+}
+
+export const savedViewApi = {
+  list: (wsId: string, entityType: CustomFieldEntityType) =>
+    apiClient.get<SavedView[]>(`/workspaces/${wsId}/saved-views`, { params: { entityType } }),
+  create: (
+    wsId: string,
+    data: {
+      entityType: CustomFieldEntityType;
+      name: string;
+      filters: ListFilters;
+      columns?: string[];
+      isShared?: boolean;
+      sortOrder?: number;
+    },
+  ) => apiClient.post<SavedView>(`/workspaces/${wsId}/saved-views`, data),
+  update: (
+    wsId: string,
+    id: string,
+    data: { name?: string; filters?: ListFilters; columns?: string[]; isShared?: boolean; sortOrder?: number },
+  ) => apiClient.patch<SavedView>(`/workspaces/${wsId}/saved-views/${id}`, data),
+  remove: (wsId: string, id: string) => apiClient.delete(`/workspaces/${wsId}/saved-views/${id}`),
 };
 
 // 团队（P0-④ 项目/团队级权限；查看 VIEWER / 管理 ADMIN）
@@ -1150,9 +1278,24 @@ export interface ImportRunResult {
   errors: { row: number; message: string }[];
 }
 
+export interface ImportableField {
+  field: string;
+  label: string;
+  required: boolean;
+  custom: boolean;
+  type: string;
+  options: string[];
+}
+
 export const importApi = {
   list: (wsId: string) =>
     apiClient.get<ImportJobSummary[]>(`/workspaces/${wsId}/imports`),
+  // 可映射字段：内置字段 + 该工作区启用中的自定义属性（cf:<key>）
+  fields: (wsId: string, entityType: string) =>
+    apiClient.get<{ entityType: string; fields: ImportableField[] }>(
+      `/workspaces/${wsId}/imports/fields`,
+      { params: { entityType } },
+    ),
   upload: (wsId: string, entityType: string, file: File) => {
     const form = new FormData();
     form.append('entityType', entityType);

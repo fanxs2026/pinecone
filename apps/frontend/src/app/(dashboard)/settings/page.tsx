@@ -31,6 +31,7 @@ import { GithubConfigPanel } from '@/components/github-config-panel';
 import { UnderlineTabs } from '@/components/underline-tabs';
 import { FeedbackConfigPanel } from '@/components/feedback-config-panel';
 import { SmtpConfigPanel } from '@/components/smtp-config-panel';
+import { CustomFieldConfigPanel } from '@/components/custom-field-config-panel';
 
 const ROLE_ORDER = ['ADMIN', 'MEMBER', 'VIEWER'] as const;
 type Role = (typeof ROLE_ORDER)[number];
@@ -49,6 +50,7 @@ function initials(name?: string, email?: string): string {
 export default function SettingsPage() {
   const t = useTranslations('settings');
   const tCommon = useTranslations('common');
+  const tcf = useTranslations('customFields');
   const queryClient = useQueryClient();
   const { workspaceId } = useWorkspace();
   const currentUser = useAuthStore((s) => s.user);
@@ -150,6 +152,7 @@ export default function SettingsPage() {
           ...(isEnterprise ? [{ key: 'sso', label: t('tabSso') }] : []),
           ...(isEnterprise ? [{ key: 'webhook', label: t('tabWebhook') }] : []),
           { key: 'workflow', label: t('tabWorkflow') },
+          { key: 'customFields', label: tcf('tabLabel') },
           { key: 'marketplace', label: t('tabMarketplace') },
           ...(isEnterprise ? [{ key: 'automation', label: t('tabAutomation') }] : []),
           ...(isEnterprise ? [{ key: 'team', label: t('tabTeam') }] : []),
@@ -361,6 +364,11 @@ export default function SettingsPage() {
       {/* 页签5：可配置工作流（状态方案 + 转换规则，仅工作区管理员） */}
       {activeTab === 'workflow' && (
         <WorkflowConfigPanel workspaceId={workspaceId} />
+      )}
+
+      {/* 自定义属性：工作区级字段定义，社区版可用 */}
+      {activeTab === 'customFields' && (
+        <CustomFieldConfigPanel workspaceId={workspaceId} />
       )}
 
       {/* I11 插件市场（2026-08-18 P2） */}
