@@ -23,6 +23,8 @@ import FileUpload from '@/components/file-upload';
 import TimeEntryList from '@/components/time-entry-list';
 import StoryTestTab from '@/components/story-test-tab';
 import { SubtasksSection } from '@/components/subtasks-section';
+import { DeadlineField } from '@/components/deadline-field';
+import { CustomFieldsSection } from '@/components/custom-fields-section';
 import { ShareButton } from '@/components/share-button';
 import { showToast } from '@/components/simple-toast';
 import { Columns3, Loader2, Trash2 } from 'lucide-react';
@@ -198,6 +200,15 @@ export default function StoryDetailPage() {
   };
 
   const priorityLabel = (p: string) => storyPriorityLabel(p);
+
+  // 交付时限：有效截止日按 任务承诺日 → 迭代结束日 → 发布结束日 回退
+  const currentSprint = (sprints ?? []).find((s) => s.id === story.sprintId) ?? null;
+  const currentRelease = releases.find((r) => r.id === story.releaseId) ?? null;
+  const deadlineFallback = currentSprint?.endDate
+    ? { due: currentSprint.endDate, tier: 'sprint' as const }
+    : currentRelease?.endDate
+      ? { due: currentRelease.endDate, tier: 'release' as const }
+      : { due: null, tier: null };
 
   const tabs = [
     { id: 'details', label: tt('details') },
@@ -398,6 +409,17 @@ export default function StoryDetailPage() {
             <span className="text-xs text-muted-foreground">{td('hours')}</span>
           </div>
 
+          {/* 交付时限（承诺完成日 + 风险标识） */}
+          <DeadlineField
+            value={story.dueDate}
+            status={story.status}
+            entityType="STORY"
+            startedAt={currentSprint?.startDate ?? story.createdAt}
+            fallbackDueDate={deadlineFallback.due}
+            fallbackTier={deadlineFallback.tier}
+            onSave={(dueDate) => updateMutation.mutate({ dueDate })}
+          />
+
           {/* Feature */}
           <div className="flex items-center gap-3 py-3">
             <span className="w-20 shrink-0 text-sm text-muted-foreground">{t('belongsToFeature')}</span>
@@ -426,6 +448,14 @@ export default function StoryDetailPage() {
               ))}
             </select>
           </div>
+
+          {/* 自定义属性（工作区配置的扩展字段） */}
+          <CustomFieldsSection
+            workspaceId={workspaceId}
+            entityType="STORY"
+            value={story.customFields}
+            onSubmit={(next) => updateMutation.mutate({ customFields: next })}
+          />
 
           {/* Creator & Dates */}
           <div className="flex items-center gap-3 py-3 text-sm text-muted-foreground">

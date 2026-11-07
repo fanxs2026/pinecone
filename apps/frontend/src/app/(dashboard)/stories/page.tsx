@@ -14,9 +14,13 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { storyApi, featureApi, releaseApi, teamsApi, sprintsApi, workflowApi } from '@/lib/api-client';
+import { storyApi, featureApi, releaseApi, teamsApi, sprintsApi, workflowApi, customFieldApi, type Story, type ListFilters } from '@/lib/api-client';
+import { ListViewToolbar } from '@/components/list-view-toolbar';
 import { resolveAssigneeAction } from '@/lib/assignee-utils';
 import { showToast } from '@/components/simple-toast';
+import { NewAttributesFieldset } from '@/components/new-attributes-fieldset';
+import { DeadlineRiskChip } from '@/components/deadline-field';
+import { computeDeadlineRisk, type DeadlineRiskResult } from '@/lib/deadline-risk';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +66,7 @@ function LaneCell({
   wipLimit,
   sprintNameOf,
   onDelete,
+  riskOf,
 }: {
   id: string;
   stories: any[];
@@ -69,6 +74,7 @@ function LaneCell({
   wipLimit?: number | null;
   sprintNameOf: (sprintId: string | null | undefined) => string | undefined;
   onDelete: (id: string) => void;
+  riskOf: (story: any) => DeadlineRiskResult;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const wipOver = wipLimit != null && stories.length > wipLimit;
@@ -88,7 +94,7 @@ function LaneCell({
       )}
       <SortableContext items={stories.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         {stories.map((story) => (
-          <StoryCard key={story.id} story={story} sprintName={sprintNameOf(story.sprintId)} onDelete={onDelete} />
+          <StoryCard key={story.id} story={story} sprintName={sprintNameOf(story.sprintId)} onDelete={onDelete} risk={riskOf(story)} />
         ))}
       </SortableContext>
     </div>
@@ -101,7 +107,9 @@ export default function StoriesPage() {
   const { workspace, workspaceId, isLoading: wsLoading } = useWorkspace();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('assignee');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [filters, setFilters] = useState<ListFilters>({});
+  /** 清单视图额外显示的自定义属性列（cf:<字段key>） */
+  const [extraColumns, setExtraColumns] = useState<string[]>([]);
   const [featureFilter, setFeatureFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
@@ -110,6 +118,8 @@ export default function StoriesPage() {
   const [newDescription, setNewDescription] = useState('');
   const [newTeamId, setNewTeamId] = useState('');
   const [newSprintId, setNewSprintId] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [newCustomFields, setNewCustomFields] = useState<Record<string, unknown>>({});
   const t = useTranslations('story');
   const tStatus = useTranslations('status');
   const c = useTranslations('common');
@@ -143,14 +153,63 @@ export default function StoriesPage() {
   });
   const releases = releasesData?.items ?? [];
 
+  /** 列表/卡片上的交付风险：承诺日 → 迭代结束日 → 发布结束日 回退 */
+  const riskOf = (story: Story) => {
+    const sprint = sprints.find((sp) => sp.id === story.sprintId);
+    const release = releases.find((r) => r.id === story.releaseId);
+    return computeDeadlineRisk({
+      status: story.status,
+      entityType: 'STORY',
+      dueDate: story.dueDate,
+      startedAt: sprint?.startDate ?? story.createdAt,
+      fallbackDueDate: sprint?.endDate ?? release?.endDate,
+    });
+  };
+
+  // 筛选条件走服务端（cf 参数），结果覆盖全部数据而不是当前这一页
+  const cfParam = useMemo(() => {
+    const active =
+      (filters.status?.length ?? 0) > 0 ||
+      (filters.priority?.length ?? 0) > 0 ||
+      (filters.assigneeId?.length ?? 0) > 0 ||
+      Object.keys(filters.customFields ?? {}).length > 0;
+    return active ? JSON.stringify(filters) : undefined;
+  }, [filters]);
+
   const { data: storiesData, isLoading } = useQuery({
-    queryKey: ['stories', workspaceId],
+    queryKey: ['stories', workspaceId, featureFilter, cfParam],
     // 2026-08-14：看板只显示顶级 Story（后端默认过滤 parentId=null），
     // 子任务仅从 story 详情页抽屉访问（subtasks-section 显式传 parentId）
-    queryFn: () => storyApi.list(workspaceId!).then((r) => r.data),
+    queryFn: () =>
+      storyApi
+        .list(workspaceId!, { featureId: featureFilter || undefined, cf: cfParam })
+        .then((r) => r.data),
     enabled: !!workspaceId,
   });
   const stories = storiesData?.items ?? [];
+
+  // 自定义属性字段定义：用于列配置与表头渲染
+  const { data: storyFieldData } = useQuery({
+    queryKey: ['custom-fields', workspaceId, 'STORY'],
+    queryFn: () => customFieldApi.list(workspaceId!, 'STORY').then((r) => r.data),
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  });
+  const storyFields = storyFieldData?.items ?? [];
+  const columnOptions = storyFields.map((f) => ({ key: `cf:${f.key}`, label: f.label }));
+  const activeExtraColumns = storyFields.filter((f) => extraColumns.includes(`cf:${f.key}`));
+  const formatCustomValue = (fieldId: string, raw: unknown): string => {
+    const field = storyFields.find((f) => f.id === fieldId);
+    if (!field || raw === null || raw === undefined || raw === '') return '';
+    if (field.type === 'SELECT') return field.options?.find((o) => o.value === raw)?.label ?? String(raw);
+    if (field.type === 'MULTI_SELECT') {
+      const list = Array.isArray(raw) ? raw : [];
+      return list.map((v) => field.options?.find((o) => o.value === v)?.label ?? String(v)).join(' / ');
+    }
+    if (field.type === 'CHECKBOX') return raw === true ? '✓' : '—';
+    if (field.type === 'DATE') return String(raw).slice(0, 10);
+    return String(raw);
+  };
 
   // Story 工作流（读取各状态的 WIP 上限）
   const { data: storyWorkflow } = useQuery({
@@ -163,14 +222,8 @@ export default function StoriesPage() {
     return st?.wipLimit ?? null;
   };
 
-  // 筛选后的数据（状态 + 功能，清单模式使用）
-  const filteredStories = useMemo(() => {
-    return stories.filter((s) => {
-      if (statusFilter && s.status !== statusFilter) return false;
-      if (featureFilter && s.featureId !== featureFilter) return false;
-      return true;
-    });
-  }, [stories, statusFilter, featureFilter]);
+  // 状态/优先级/负责人/自定义属性均由服务端筛选，这里不再做二次过滤
+  const filteredStories = stories;
 
   // 勾选/全选逻辑
   const allChecked = filteredStories.length > 0 && filteredStories.every((s) => selectedIds.has(s.id));
@@ -194,7 +247,19 @@ export default function StoriesPage() {
     });
   };
 
-  const exportHeaders = [c('workspace'), c('code'), c('title'), c('status'), c('priority'), t('feature'), t('releaseLabel'), t('owner'), c('creator'), c('createdAt')];
+  const exportHeaders = [
+    c('workspace'),
+    c('code'),
+    c('title'),
+    c('status'),
+    c('priority'),
+    t('feature'),
+    t('releaseLabel'),
+    t('owner'),
+    c('creator'),
+    c('createdAt'),
+    ...activeExtraColumns.map((f) => f.label),
+  ];
   const exportRows = () =>
     filteredStories.map((s) => [
       workspace?.name || '',
@@ -207,6 +272,13 @@ export default function StoriesPage() {
       s.assignee?.name || '',
       s.createdBy?.name || s.createdBy?.email || '',
       formatDate(s.createdAt),
+      ...activeExtraColumns.map(
+        (f) =>
+          formatCustomValue(
+            f.id,
+            (s.customFields as Record<string, unknown> | null | undefined)?.[f.key],
+          ) || '',
+      ),
     ]);
 
   const updateMutation = useMutation({
@@ -216,14 +288,27 @@ export default function StoriesPage() {
   });
 
   const createStoryMutation = useMutation({
-    mutationFn: (data: { featureId: string; title: string; description?: string; teamId?: string; sprintId?: string }) =>
-      storyApi.create(workspaceId!, data).then((r) => r.data),
+    mutationFn: (data: {
+      featureId: string;
+      title: string;
+      description?: string;
+      teamId?: string;
+      sprintId?: string;
+      dueDate?: string;
+      customFields?: Record<string, unknown>;
+    }) => storyApi.create(workspaceId!, data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stories', workspaceId] });
       setShowCreate(false);
       setNewFeatureId('');
       setNewTitle('');
       setNewDescription('');
+      setNewDueDate('');
+      setNewCustomFields({});
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+      showToast(Array.isArray(msg) ? String(msg[0]) : typeof msg === 'string' ? msg : c('error'));
     },
   });
 
@@ -502,9 +587,17 @@ export default function StoriesPage() {
               onChange={(e) => setNewDescription(e.target.value)}
               className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             />
+            <NewAttributesFieldset
+              workspaceId={workspaceId}
+              entityType="STORY"
+              dueDate={newDueDate}
+              onDueDateChange={setNewDueDate}
+              customFields={newCustomFields}
+              onCustomFieldsChange={setNewCustomFields}
+            />
             <div className="flex gap-2">
               <Button
-                onClick={() => createStoryMutation.mutate({ featureId: newFeatureId, title: newTitle, description: newDescription || undefined, teamId: newTeamId || undefined, sprintId: newSprintId || undefined })}
+                onClick={() => createStoryMutation.mutate({ featureId: newFeatureId, title: newTitle, description: newDescription || undefined, teamId: newTeamId || undefined, sprintId: newSprintId || undefined, dueDate: newDueDate || undefined, customFields: newCustomFields })}
                 disabled={!newTitle || !newFeatureId || createStoryMutation.isPending}
               >
                 {createStoryMutation.isPending ? c('creating') : c('create')}
@@ -526,16 +619,6 @@ export default function StoriesPage() {
           <div className="flex flex-wrap items-center gap-2">
             <select
               className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="">{c('status')}: {c('all')}</option>
-              {STATUS_COLUMN_IDS.map((s) => (
-                <option key={s} value={s}>{tStatus(`STORY_${s}`) || s}</option>
-              ))}
-            </select>
-            <select
-              className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
               value={featureFilter}
               onChange={(e) => setFeatureFilter(e.target.value)}
             >
@@ -545,6 +628,38 @@ export default function StoriesPage() {
               ))}
             </select>
           </div>
+
+          <ListViewToolbar
+            workspaceId={workspaceId}
+            entityType="STORY"
+            filters={filters}
+            onFiltersChange={setFilters}
+            statusOptions={STATUS_COLUMN_IDS.map((s) => ({
+              value: s,
+              label: tStatus(`STORY_${s}`) || s,
+            }))}
+            priorityOptions={Object.keys(STORY_PRIORITY_LABELS).map((p) => ({
+              value: p,
+              label: STORY_PRIORITY_LABELS[p],
+            }))}
+            memberOptions={[
+              ...(assigneeColumns.mine
+                ? [
+                    {
+                      value: assigneeColumns.mine.id,
+                      label: assigneeColumns.mine.name || assigneeColumns.mine.email,
+                    },
+                  ]
+                : []),
+              ...assigneeColumns.others.map((u) => ({
+                value: u.id,
+                label: u.name || u.email,
+              })),
+            ]}
+            columnOptions={columnOptions}
+            columns={extraColumns}
+            onColumnsChange={setExtraColumns}
+          />
 
           {filteredStories.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
@@ -579,6 +694,11 @@ export default function StoriesPage() {
                     <th className="px-3 py-2 font-medium">{t('owner')}</th>
                     <th className="px-3 py-2 font-medium">{c('creator')}</th>
                     <th className="px-3 py-2 font-medium">{c('createdAt')}</th>
+                    {activeExtraColumns.map((field) => (
+                      <th key={field.id} className="px-3 py-2 font-medium">
+                        {field.label}
+                      </th>
+                    ))}
                     <th className="px-3 py-2 font-medium w-10"></th>
                   </tr>
                 </thead>
@@ -599,7 +719,12 @@ export default function StoriesPage() {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{workspace?.name || '—'}</td>
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">{story.code || '—'}</td>
-                      <td className="px-3 py-2 font-medium">{story.title}</td>
+                      <td className="px-3 py-2 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate">{story.title}</span>
+                          <DeadlineRiskChip result={riskOf(story)} />
+                        </div>
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <Badge variant="secondary" className={cn('text-xs', getStatusBadgeClasses('STORY', story.status))}>
                           {tStatus(`STORY_${story.status}`) || story.status}
@@ -625,6 +750,14 @@ export default function StoriesPage() {
                       <td className="px-3 py-2 text-muted-foreground">{story.assignee?.name || '—'}</td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{story.createdBy?.name || story.createdBy?.email || '—'}</td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{formatDate(story.createdAt)}</td>
+                      {activeExtraColumns.map((field) => (
+                        <td key={field.id} className="px-3 py-2 text-muted-foreground">
+                          {formatCustomValue(
+                            field.id,
+                            (story.customFields as Record<string, unknown> | null | undefined)?.[field.key],
+                          ) || '—'}
+                        </td>
+                      ))}
                       <td className="px-3 py-2">
                         <Button
                           variant="ghost"
@@ -666,7 +799,7 @@ export default function StoriesPage() {
                       strategy={verticalListSortingStrategy}
                     >
                       {getColumnStoriesByStatus(id).map((story) => (
-                        <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} />
+                        <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} risk={riskOf(story)} />
                       ))}
                     </SortableContext>
                   </KanbanColumn>
@@ -702,7 +835,7 @@ export default function StoriesPage() {
                       strategy={verticalListSortingStrategy}
                     >
                       {colStories.map((story) => (
-                        <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} />
+                        <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} risk={riskOf(story)} />
                       ))}
                     </SortableContext>
                   </KanbanColumn>
@@ -748,7 +881,7 @@ export default function StoriesPage() {
                     strategy={verticalListSortingStrategy}
                   >
                     {colStories.map((story) => (
-                      <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} />
+                      <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} risk={riskOf(story)} />
                     ))}
                   </SortableContext>
                 </KanbanColumn>
@@ -817,6 +950,7 @@ export default function StoriesPage() {
                         wipLimit={wipLimitOf(st)}
                         sprintNameOf={(sid) => sprints.find((sp) => sp.id === sid)?.name}
                         onDelete={(sid) => deleteMutation.mutate(sid)}
+                        riskOf={riskOf}
                       />
                     );
                   })}
@@ -845,7 +979,7 @@ export default function StoriesPage() {
                 strategy={verticalListSortingStrategy}
               >
                 {getColumnStoriesByAssignee(null).map((story) => (
-                  <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} />
+                  <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} risk={riskOf(story)} />
                 ))}
               </SortableContext>
             </KanbanColumn>
@@ -863,7 +997,7 @@ export default function StoriesPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   {getColumnStoriesByAssignee(assigneeColumns.mine.id).map((story) => (
-                    <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} />
+                    <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} risk={riskOf(story)} />
                   ))}
                 </SortableContext>
               </KanbanColumn>
@@ -883,7 +1017,7 @@ export default function StoriesPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   {getColumnStoriesByAssignee(u.id).map((story) => (
-                    <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} />
+                    <StoryCard key={story.id} story={story} sprintName={sprints.find((sp) => sp.id === story.sprintId)?.name} onDelete={(sid) => deleteMutation.mutate(sid)} risk={riskOf(story)} />
                   ))}
                 </SortableContext>
               </KanbanColumn>

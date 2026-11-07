@@ -18,6 +18,7 @@ import HistoryTimeline from '@/components/history-timeline';
 import RelationsPanel from '@/components/relations-panel';
 import { GithubLinksSection } from '@/components/github-links-section';
 import { ShareButton } from '@/components/share-button';
+import { CustomFieldsSection } from '@/components/custom-fields-section';
 import TagInput from '@/components/tag-input';
 import FileUpload from '@/components/file-upload';
 import TimeEntryList from '@/components/time-entry-list';
@@ -210,6 +211,14 @@ export default function IdeaDetailPage() {
               />
             </div>
           </div>
+
+          {/* 自定义属性（工作区配置的扩展字段） */}
+          <CustomFieldsSection
+            workspaceId={workspaceId}
+            entityType="IDEA"
+            value={idea.customFields}
+            onSubmit={(next) => updateMutation.mutate({ customFields: next })}
+          />
 
           {/* Creator & Dates */}
           <div className="flex items-center gap-3 py-3 text-sm text-muted-foreground">

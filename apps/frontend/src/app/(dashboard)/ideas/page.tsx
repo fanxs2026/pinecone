@@ -14,9 +14,11 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ideaApi, themesApi } from '@/lib/api-client';
+import { ideaApi, themesApi, type ListFilters } from '@/lib/api-client';
+import { ListViewToolbar } from '@/components/list-view-toolbar';
 import { resolveAssigneeAction } from '@/lib/assignee-utils';
 import { showToast } from '@/components/simple-toast';
+import { NewAttributesFieldset } from '@/components/new-attributes-fieldset';
 import VoteButton from '@/components/vote-button';
 import ScoreEditor from '@/components/score-editor';
 import { useWorkspace } from '@/hooks/use-workspace';
@@ -51,9 +53,10 @@ export default function IdeasPage() {
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newCategory, setNewCategory] = useState('');
+  const [newCustomFields, setNewCustomFields] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('assignee');
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [filters, setFilters] = useState<ListFilters>({});
   const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const t = useTranslations('ideas');
@@ -66,9 +69,26 @@ export default function IdeasPage() {
   const [sortBy, setSortBy] = useState('');
   const [themeFilter, setThemeFilter] = useState('');
 
+  const cfParam = useMemo(() => {
+    const active =
+      (filters.status?.length ?? 0) > 0 ||
+      (filters.priority?.length ?? 0) > 0 ||
+      (filters.assigneeId?.length ?? 0) > 0 ||
+      Object.keys(filters.customFields ?? {}).length > 0;
+    return active ? JSON.stringify(filters) : undefined;
+  }, [filters]);
+
   const { data: ideasData, isLoading } = useQuery({
-    queryKey: ['ideas', workspaceId, search, sortBy, themeFilter],
-    queryFn: () => ideaApi.list(workspaceId!, { search: search || undefined, sortBy: sortBy || undefined, themeId: themeFilter || undefined }).then((r) => r.data),
+    queryKey: ['ideas', workspaceId, search, sortBy, themeFilter, cfParam],
+    queryFn: () =>
+      ideaApi
+        .list(workspaceId!, {
+          search: search || undefined,
+          sortBy: sortBy || undefined,
+          themeId: themeFilter || undefined,
+          cf: cfParam,
+        })
+        .then((r) => r.data),
     enabled: !!workspaceId,
   });
   const ideas = ideasData?.items ?? [];
@@ -82,12 +102,12 @@ export default function IdeasPage() {
 
   // 筛选后的数据（状态 + 分类，清单模式使用）
   const filteredIdeas = useMemo(() => {
+    // 状态/优先级/负责人/自定义属性由服务端筛选，这里只保留分类这一结构维度
     return ideas.filter((i) => {
-      if (statusFilter && i.status !== statusFilter) return false;
       if (categoryFilter && (i.category || '') !== categoryFilter) return false;
       return true;
     });
-  }, [ideas, statusFilter, categoryFilter]);
+  }, [ideas, categoryFilter]);
 
   const categories = useMemo(
     () => Array.from(new Set(ideas.map((i) => i.category).filter(Boolean))).sort() as string[],
@@ -130,14 +150,23 @@ export default function IdeasPage() {
     ]);
 
   const createMutation = useMutation({
-    mutationFn: (data: { title: string; description?: string; category?: string }) =>
-      ideaApi.create(workspaceId!, data).then((r) => r.data),
+    mutationFn: (data: {
+      title: string;
+      description?: string;
+      category?: string;
+      customFields?: Record<string, unknown>;
+    }) => ideaApi.create(workspaceId!, data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ideas', workspaceId] });
       setShowCreate(false);
       setNewTitle('');
       setNewDescription('');
       setNewCategory('');
+      setNewCustomFields({});
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+      showToast(Array.isArray(msg) ? String(msg[0]) : typeof msg === 'string' ? msg : c('error'));
     },
   });
 
@@ -344,9 +373,18 @@ export default function IdeasPage() {
               value={newCategory}
               onChange={(e) => setNewCategory(e.target.value)}
             />
+            <NewAttributesFieldset
+              workspaceId={workspaceId}
+              entityType="IDEA"
+              withDueDate={false}
+              dueDate=""
+              onDueDateChange={() => {}}
+              customFields={newCustomFields}
+              onCustomFieldsChange={setNewCustomFields}
+            />
             <div className="flex gap-2">
               <Button
-                onClick={() => createMutation.mutate({ title: newTitle, description: newDescription, category: newCategory })}
+                onClick={() => createMutation.mutate({ title: newTitle, description: newDescription, category: newCategory, customFields: newCustomFields })}
                 disabled={!newTitle || createMutation.isPending}
               >
                 {createMutation.isPending ? t('creating') : t('create')}
@@ -368,17 +406,18 @@ export default function IdeasPage() {
       </div>
 
       {viewMode === 'list' && (
+        <>
+        <ListViewToolbar
+          workspaceId={workspaceId}
+          entityType="IDEA"
+          filters={filters}
+          onFiltersChange={setFilters}
+          statusOptions={IDEA_STATUS_COLUMN_IDS.map((s) => ({
+            value: s,
+            label: tStatus(`IDEA_${s}`) || s,
+          }))}
+        />
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">{c('status')}: {c('all')}</option>
-            {IDEA_STATUS_COLUMN_IDS.map((s) => (
-              <option key={s} value={s}>{tStatus(`IDEA_${s}`) || s}</option>
-            ))}
-          </select>
           {categories.length > 0 && (
             <select
               className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
@@ -413,6 +452,7 @@ export default function IdeasPage() {
             <option value="priorityScore">{tScores('sortByScore')}</option>
           </select>
         </div>
+        </>
       )}
 
       {isLoading ? (

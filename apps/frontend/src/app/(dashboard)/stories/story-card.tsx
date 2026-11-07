@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Trash2 } from 'lucide-react';
 import type { Story } from '@/lib/api-client';
+import { DeadlineRiskChip } from '@/components/deadline-field';
+import type { DeadlineRiskResult } from '@/lib/deadline-risk';
 import { getStatusBg, getStatusBorder, getStatusBadgeClasses } from '@/lib/status-colors';
 import { useTranslations } from 'next-intl';
 import { STORY_PRIORITY_COLORS, STORY_PRIORITY_LABELS } from '@/lib/story-priority';
@@ -17,9 +19,11 @@ interface StoryCardProps {
   onDelete?: (id: string) => void;
   /** 迭代名称（可选，卡片上显示归属） */
   sprintName?: string;
+  /** 交付风险（可选，仅逾期/高危时显示标记） */
+  risk?: DeadlineRiskResult;
 }
 
-export default function StoryCard({ story, onDelete, sprintName }: StoryCardProps) {
+export default function StoryCard({ story, onDelete, sprintName, risk }: StoryCardProps) {
   const tStatus = useTranslations('status');
   const {
     attributes,
@@ -91,7 +95,10 @@ export default function StoryCard({ story, onDelete, sprintName }: StoryCardProp
               </Button>
             )}
           </div>
-          <p className="mt-1 text-sm font-medium leading-snug break-words">{story.title}</p>
+          <div className="mt-1 flex items-start gap-1.5">
+            <p className="flex-1 text-sm font-medium leading-snug break-words">{story.title}</p>
+            {risk && <DeadlineRiskChip result={risk} />}
+          </div>
           {(story.assignee || story.storyPoints) ? (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               {story.assignee && <span>{story.assignee.name}</span>}

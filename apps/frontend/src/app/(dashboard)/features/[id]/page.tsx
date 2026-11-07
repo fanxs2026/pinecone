@@ -17,6 +17,8 @@ import HistoryTimeline from '@/components/history-timeline';
 import RelationsPanel from '@/components/relations-panel';
 import { GithubLinksSection } from '@/components/github-links-section';
 import { ShareButton } from '@/components/share-button';
+import { DeadlineField } from '@/components/deadline-field';
+import { CustomFieldsSection } from '@/components/custom-fields-section';
 import TagInput from '@/components/tag-input';
 import FileUpload from '@/components/file-upload';
 import TimeEntryList from '@/components/time-entry-list';
@@ -298,6 +300,25 @@ export default function FeatureDetailPage() {
               ))}
             </select>
           </div>
+
+          {/* 交付时限（承诺完成日 + 风险标识） */}
+          <DeadlineField
+            value={feature.dueDate}
+            status={feature.status}
+            entityType="FEATURE"
+            startedAt={feature.createdAt}
+            fallbackDueDate={releases.find((r) => r.id === feature.releaseId)?.endDate ?? null}
+            fallbackTier="release"
+            onSave={(dueDate) => updateMutation.mutate({ dueDate })}
+          />
+
+          {/* 自定义属性（工作区配置的扩展字段） */}
+          <CustomFieldsSection
+            workspaceId={workspaceId}
+            entityType="FEATURE"
+            value={feature.customFields}
+            onSubmit={(next) => updateMutation.mutate({ customFields: next })}
+          />
 
           {/* Effort */}
           <div className="flex items-center gap-3 py-3">

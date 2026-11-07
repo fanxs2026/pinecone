@@ -13,11 +13,15 @@ import {
   PointerSensor,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { featureApi, releaseApi, themesApi } from '@/lib/api-client';
+import { featureApi, releaseApi, themesApi, type Feature, type ListFilters } from '@/lib/api-client';
+import { ListViewToolbar } from '@/components/list-view-toolbar';
 import { ENTITY_PRIORITY_COLORS, ENTITY_PRIORITY_LABELS } from '@/lib/entity-priority';
 import { resolveAssigneeAction } from '@/lib/assignee-utils';
 import { FEATURE_STATUSES } from '@/lib/entity-statuses';
 import { showToast } from '@/components/simple-toast';
+import { NewAttributesFieldset } from '@/components/new-attributes-fieldset';
+import { DeadlineRiskChip } from '@/components/deadline-field';
+import { computeDeadlineRisk } from '@/lib/deadline-risk';
 import VoteButton from '@/components/vote-button';
 import ScoreEditor from '@/components/score-editor';
 import { Button } from '@/components/ui/button';
@@ -53,10 +57,12 @@ export default function FeaturesPage() {
   const [newRelId, setNewRelId] = useState('');
   const [priority, setPriority] = useState('P2');
   const [newParentId, setNewParentId] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [newCustomFields, setNewCustomFields] = useState<Record<string, unknown>>({});
   const [isEpic, setIsEpic] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('assignee');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [filters, setFilters] = useState<ListFilters>({});
   const [releaseFilter, setReleaseFilter] = useState('');
   const [sortBy, setSortBy] = useState('');
   const [themeFilter, setThemeFilter] = useState('');
@@ -70,9 +76,25 @@ export default function FeaturesPage() {
   const tThemes = useTranslations('themes');
   const currentUser = useAuthStore((s) => s.user);
 
+  const cfParam = useMemo(() => {
+    const active =
+      (filters.status?.length ?? 0) > 0 ||
+      (filters.priority?.length ?? 0) > 0 ||
+      (filters.assigneeId?.length ?? 0) > 0 ||
+      Object.keys(filters.customFields ?? {}).length > 0;
+    return active ? JSON.stringify(filters) : undefined;
+  }, [filters]);
+
   const { data: featuresData, isLoading } = useQuery({
-    queryKey: ['features', workspaceId, sortBy, themeFilter],
-    queryFn: () => featureApi.list(workspaceId!, { sortBy: sortBy || undefined, themeId: themeFilter || undefined }).then((r) => r.data),
+    queryKey: ['features', workspaceId, sortBy, themeFilter, cfParam],
+    queryFn: () =>
+      featureApi
+        .list(workspaceId!, {
+          sortBy: sortBy || undefined,
+          themeId: themeFilter || undefined,
+          cf: cfParam,
+        })
+        .then((r) => r.data),
     enabled: !!workspaceId,
   });
   const features = featuresData?.items ?? [];
@@ -91,6 +113,16 @@ export default function FeaturesPage() {
   });
   const releases = releasesData?.items ?? [];
 
+  /** 列表行的交付风险：功能没有迭代归属，回退只用发布结束日 */
+  const riskOf = (feature: Feature) =>
+    computeDeadlineRisk({
+      status: feature.status,
+      entityType: 'FEATURE',
+      dueDate: feature.dueDate,
+      startedAt: feature.createdAt,
+      fallbackDueDate: releases.find((r) => r.id === feature.releaseId)?.endDate,
+    });
+
   // Columns: non-closed releases sorted by version ascending, plus "Unassigned"
   const columns = useMemo(() => {
     const sorted = [...releases]
@@ -101,7 +133,18 @@ export default function FeaturesPage() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      featureApi.create(workspaceId!, { title, description: newDescription || undefined, releaseId: newRelId || undefined, priority, parentFeatureId: newParentId || undefined, isEpic }).then((r) => r.data),
+      featureApi
+        .create(workspaceId!, {
+          title,
+          description: newDescription || undefined,
+          releaseId: newRelId || undefined,
+          priority,
+          parentFeatureId: newParentId || undefined,
+          isEpic,
+          dueDate: newDueDate || undefined,
+          customFields: newCustomFields,
+        })
+        .then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['features', workspaceId] });
       setShowCreate(false);
@@ -111,6 +154,12 @@ export default function FeaturesPage() {
       setNewParentId('');
       setIsEpic(false);
       setPriority('P2');
+      setNewDueDate('');
+      setNewCustomFields({});
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+      showToast(Array.isArray(msg) ? String(msg[0]) : typeof msg === 'string' ? msg : c('error'));
     },
   });
 
@@ -265,12 +314,12 @@ export default function FeaturesPage() {
 
   // 筛选后的数据（状态 + 发布周期，清单模式使用）
   const filteredFeatures = useMemo(() => {
+    // 状态/优先级/负责人/自定义属性由服务端筛选，这里只保留发布周期这一结构维度
     return features.filter((f) => {
-      if (statusFilter && f.status !== statusFilter) return false;
       if (releaseFilter && (f.releaseId ?? '') !== releaseFilter) return false;
       return true;
     });
-  }, [features, statusFilter, releaseFilter]);
+  }, [features, releaseFilter]);
 
   // 勾选/全选逻辑
   const allChecked = filteredFeatures.length > 0 && filteredFeatures.every((f) => selectedIds.has(f.id));
@@ -420,6 +469,14 @@ export default function FeaturesPage() {
               />
               {t('markAsEpic')}
             </label>
+            <NewAttributesFieldset
+              workspaceId={workspaceId}
+              entityType="FEATURE"
+              dueDate={newDueDate}
+              onDueDateChange={setNewDueDate}
+              customFields={newCustomFields}
+              onCustomFieldsChange={setNewCustomFields}
+            />
             <div className="flex gap-2">
               <Button onClick={() => createMutation.mutate()} disabled={!title}>{t('create')}</Button>
               <Button variant="outline" onClick={() => setShowCreate(false)}>{c('cancel')}</Button>
@@ -436,17 +493,22 @@ export default function FeaturesPage() {
         </div>
       ) : viewMode === 'list' ? (
         <>
+          <ListViewToolbar
+            workspaceId={workspaceId}
+            entityType="FEATURE"
+            filters={filters}
+            onFiltersChange={setFilters}
+            statusOptions={FEATURE_STATUS_COLUMN_IDS.map((s) => ({
+              value: s,
+              label: tStatus(`FEATURE_${s}`) || s,
+            }))}
+            priorityOptions={Object.keys(ENTITY_PRIORITY_LABELS).map((p) => ({
+              value: p,
+              label: ENTITY_PRIORITY_LABELS[p],
+            }))}
+          />
+
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="">{c('status')}: {c('all')}</option>
-              {FEATURE_STATUS_COLUMN_IDS.map((s) => (
-                <option key={s} value={s}>{tStatus(`FEATURE_${s}`) || s}</option>
-              ))}
-            </select>
             <select
               className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
               value={releaseFilter}
@@ -532,7 +594,12 @@ export default function FeaturesPage() {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{workspace?.name || '—'}</td>
                       <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">{feature.code || '—'}</td>
-                      <td className="px-3 py-2 font-medium">{feature.title}</td>
+                      <td className="px-3 py-2 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate">{feature.title}</span>
+                          <DeadlineRiskChip result={riskOf(feature)} />
+                        </div>
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <Badge variant="secondary" className={getStatusBadgeClasses('FEATURE', feature.status)}>
                           {tStatus(`FEATURE_${feature.status}`) || feature.status}
@@ -597,7 +664,7 @@ export default function FeaturesPage() {
                     strategy={verticalListSortingStrategy}
                   >
                     {getColumnFeaturesByStatus(id).map((feature) => (
-                      <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                      <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                     ))}
                   </SortableContext>
                 </KanbanColumn>
@@ -641,7 +708,7 @@ export default function FeaturesPage() {
                 strategy={verticalListSortingStrategy}
               >
                 {getColumnFeatures(null).map((feature) => (
-                  <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                  <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                 ))}
               </SortableContext>
             </KanbanColumn>
@@ -673,7 +740,7 @@ export default function FeaturesPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   {getColumnFeatures(release.id).map((feature) => (
-                    <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                    <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                   ))}
                 </SortableContext>
               </KanbanColumn>
@@ -724,7 +791,7 @@ export default function FeaturesPage() {
                     strategy={verticalListSortingStrategy}
                   >
                     {colFeatures.map((feature) => (
-                      <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                      <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                     ))}
                   </SortableContext>
                 </KanbanColumn>
@@ -768,7 +835,7 @@ export default function FeaturesPage() {
                 strategy={verticalListSortingStrategy}
               >
                 {getColumnFeaturesByAssignee(null).map((feature) => (
-                  <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                  <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                 ))}
               </SortableContext>
             </KanbanColumn>
@@ -786,7 +853,7 @@ export default function FeaturesPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   {getColumnFeaturesByAssignee(assigneeColumns.mine.id).map((feature) => (
-                    <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                    <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                   ))}
                 </SortableContext>
               </KanbanColumn>
@@ -806,7 +873,7 @@ export default function FeaturesPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   {getColumnFeaturesByAssignee(u.id).map((feature) => (
-                    <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} />
+                    <FeatureCard key={feature.id} feature={feature} onDelete={(id) => deleteMutation.mutate(id)} risk={riskOf(feature)} />
                   ))}
                 </SortableContext>
               </KanbanColumn>

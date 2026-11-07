@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { importApi, type ImportJobDetail } from '@/lib/api-client';
+import { importApi, type ImportJobDetail, type ImportableField } from '@/lib/api-client';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -119,7 +119,22 @@ export default function ImportsPage() {
     }
   };
 
-  const fields = FIELD_OPTIONS[entityType];
+  // 可映射字段以接口为准（内置 + 启用中的自定义属性），本地列表仅作加载兜底
+  const { data: fieldData } = useQuery({
+    queryKey: ['import-fields', workspaceId, entityType],
+    queryFn: () => importApi.fields(workspaceId!, entityType).then((r) => r.data),
+    enabled: !!workspaceId,
+  });
+  const fields: ImportableField[] =
+    fieldData?.fields ??
+    FIELD_OPTIONS[entityType].map((f) => ({
+      field: f.field,
+      label: f.field,
+      required: !!f.required,
+      custom: false,
+      type: 'TEXT',
+      options: [],
+    }));
   const hasTitle = Object.values(mapping).includes('title');
 
   if (!workspaceId) {
@@ -227,7 +242,7 @@ export default function ImportsPage() {
                         <option value="">— {c('none')} —</option>
                         {fields.map((f) => (
                           <option key={f.field} value={f.field}>
-                            {t(`field_${f.field}`)}{f.required ? ' *' : ''}
+                            {f.label || f.field}{f.required ? ' *' : ''}
                           </option>
                         ))}
                       </select>

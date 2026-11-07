@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Trash2 } from 'lucide-react';
 import type { Feature } from '@/lib/api-client';
+import { DeadlineRiskChip } from '@/components/deadline-field';
+import type { DeadlineRiskResult } from '@/lib/deadline-risk';
 import { getStatusBadgeClasses, getStatusBg, getStatusBorder } from '@/lib/status-colors';
 import { useTranslations } from 'next-intl';
 import { useWorkspace } from '@/hooks/use-workspace';
@@ -18,9 +20,11 @@ import { ENTITY_PRIORITY_COLORS, ENTITY_PRIORITY_LABELS } from '@/lib/entity-pri
 interface FeatureCardProps {
   feature: Feature;
   onDelete?: (id: string) => void;
+  /** 交付风险（可选，仅逾期/高危时显示标记） */
+  risk?: DeadlineRiskResult;
 }
 
-export default function FeatureCard({ feature, onDelete }: FeatureCardProps) {
+export default function FeatureCard({ feature, onDelete, risk }: FeatureCardProps) {
   const t = useTranslations('feature');
   const tStatus = useTranslations('status');
   const { workspaceId } = useWorkspace();
@@ -79,7 +83,10 @@ export default function FeatureCard({ feature, onDelete }: FeatureCardProps) {
               </Button>
             )}
           </div>
-          <p className="mt-1 text-sm font-medium leading-snug break-words">{feature.title}</p>
+          <div className="mt-1 flex items-start gap-1.5">
+            <p className="flex-1 text-sm font-medium leading-snug break-words">{feature.title}</p>
+            {risk && <DeadlineRiskChip result={risk} />}
+          </div>
           {/* 第 2 行：投票 + 评分（2026-08-15 从首行挪下，避免折行） */}
           {workspaceId && (
             <div className="mt-1.5 flex items-center gap-1.5">

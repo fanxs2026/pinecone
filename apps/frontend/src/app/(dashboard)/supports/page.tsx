@@ -14,9 +14,13 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { supportApi, themesApi } from '@/lib/api-client';
+import { supportApi, themesApi, releaseApi, type Support, type ListFilters } from '@/lib/api-client';
+import { ListViewToolbar } from '@/components/list-view-toolbar';
 import { resolveAssigneeAction } from '@/lib/assignee-utils';
 import { showToast } from '@/components/simple-toast';
+import { NewAttributesFieldset } from '@/components/new-attributes-fieldset';
+import { DeadlineRiskChip } from '@/components/deadline-field';
+import { computeDeadlineRisk } from '@/lib/deadline-risk';
 import VoteButton from '@/components/vote-button';
 import ScoreEditor from '@/components/score-editor';
 import { formatDate } from '@/lib/date-utils';
@@ -58,9 +62,12 @@ export default function SupportsPage() {
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newType, setNewType] = useState<string>('SUPPORT_REQUEST');
+  const [newReleaseId, setNewReleaseId] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [newCustomFields, setNewCustomFields] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('assignee');
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [filters, setFilters] = useState<ListFilters>({});
   const [typeFilter, setTypeFilter] = useState('');
   const [sortBy, setSortBy] = useState('');
   const [themeFilter, setThemeFilter] = useState('');
@@ -79,9 +86,26 @@ export default function SupportsPage() {
     CLOSED: t('closed'),
   };
 
+  const cfParam = useMemo(() => {
+    const active =
+      (filters.status?.length ?? 0) > 0 ||
+      (filters.priority?.length ?? 0) > 0 ||
+      (filters.assigneeId?.length ?? 0) > 0 ||
+      Object.keys(filters.customFields ?? {}).length > 0;
+    return active ? JSON.stringify(filters) : undefined;
+  }, [filters]);
+
   const { data: supportsData, isLoading } = useQuery({
-    queryKey: ['supports', workspaceId, search, sortBy, themeFilter],
-    queryFn: () => supportApi.list(workspaceId!, { search: search || undefined, sortBy: sortBy || undefined, themeId: themeFilter || undefined }).then((r) => r.data),
+    queryKey: ['supports', workspaceId, search, sortBy, themeFilter, cfParam],
+    queryFn: () =>
+      supportApi
+        .list(workspaceId!, {
+          search: search || undefined,
+          sortBy: sortBy || undefined,
+          themeId: themeFilter || undefined,
+          cf: cfParam,
+        })
+        .then((r) => r.data),
     enabled: !!workspaceId,
   });
   const supports = supportsData?.items ?? [];
@@ -95,12 +119,12 @@ export default function SupportsPage() {
 
   // 筛选后的数据（状态 + 类型，清单模式使用）
   const filteredSupports = useMemo(() => {
+    // 状态/优先级/负责人/自定义属性由服务端筛选，这里只保留类型这一结构维度
     return supports.filter((s) => {
-      if (statusFilter && s.status !== statusFilter) return false;
       if (typeFilter && s.type !== typeFilter) return false;
       return true;
     });
-  }, [supports, statusFilter, typeFilter]);
+  }, [supports, typeFilter]);
 
   // 勾选/全选逻辑
   const allChecked = filteredSupports.length > 0 && filteredSupports.every((s) => selectedIds.has(s.id));
@@ -137,15 +161,46 @@ export default function SupportsPage() {
       formatDate(s.createdAt),
     ]);
 
+  // 发布周期：供新建时选挂靠周期（支持请求的交付时限回退依赖发布结束日）
+  const { data: releasesData } = useQuery({
+    queryKey: ['releases', workspaceId],
+    queryFn: () => releaseApi.list(workspaceId!).then((r) => r.data),
+    enabled: !!workspaceId,
+  });
+  const releases = releasesData?.items ?? [];
+
+  /** 列表行的交付风险：支持请求没有迭代归属，回退只用发布结束日 */
+  const riskOf = (support: Support) =>
+    computeDeadlineRisk({
+      status: support.status,
+      entityType: 'SUPPORT',
+      dueDate: support.dueDate,
+      startedAt: support.createdAt,
+      fallbackDueDate: releases.find((r) => r.id === support.releaseId)?.endDate,
+    });
+
   const createMutation = useMutation({
-    mutationFn: (data: { title: string; description?: string; type?: string }) =>
-      supportApi.create(workspaceId!, data).then((r) => r.data),
+    mutationFn: (data: {
+      title: string;
+      description?: string;
+      type?: string;
+      releaseId?: string;
+      dueDate?: string;
+      customFields?: Record<string, unknown>;
+    }) => supportApi.create(workspaceId!, data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supports', workspaceId] });
       setShowCreate(false);
       setNewTitle('');
       setNewDescription('');
       setNewType('SUPPORT_REQUEST');
+      setNewReleaseId('');
+      setNewDueDate('');
+      setNewCustomFields({});
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+      showToast(Array.isArray(msg) ? String(msg[0]) : typeof msg === 'string' ? msg : c('error'));
     },
   });
 
@@ -258,7 +313,10 @@ export default function SupportsPage() {
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
-        <p className="mt-1.5 text-sm font-medium break-words">{support.title}</p>
+        <div className="mt-1.5 flex items-start gap-1.5">
+          <p className="flex-1 text-sm font-medium break-words">{support.title}</p>
+          <DeadlineRiskChip result={riskOf(support)} />
+        </div>
         {support.tags && support.tags.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {support.tags.map((tag) => (
@@ -353,9 +411,41 @@ export default function SupportsPage() {
                 ))}
               </select>
             </div>
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">{c('release')}</span>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                value={newReleaseId}
+                onChange={(e) => setNewReleaseId(e.target.value)}
+              >
+                <option value="">{c('none')}</option>
+                {releases.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.version ? `${r.name} (${r.version})` : r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <NewAttributesFieldset
+              workspaceId={workspaceId}
+              entityType="SUPPORT"
+              dueDate={newDueDate}
+              onDueDateChange={setNewDueDate}
+              customFields={newCustomFields}
+              onCustomFieldsChange={setNewCustomFields}
+            />
             <div className="flex gap-2">
               <Button
-                onClick={() => createMutation.mutate({ title: newTitle, description: newDescription || undefined, type: newType })}
+                onClick={() =>
+                  createMutation.mutate({
+                    title: newTitle,
+                    description: newDescription || undefined,
+                    type: newType,
+                    releaseId: newReleaseId || undefined,
+                    dueDate: newDueDate || undefined,
+                    customFields: newCustomFields,
+                  })
+                }
                 disabled={!newTitle || createMutation.isPending}
               >
                 {createMutation.isPending ? c('creating') : c('create')}
@@ -377,17 +467,18 @@ export default function SupportsPage() {
       </div>
 
       {viewMode === 'list' && (
+        <>
+        <ListViewToolbar
+          workspaceId={workspaceId}
+          entityType="SUPPORT"
+          filters={filters}
+          onFiltersChange={setFilters}
+          statusOptions={SUPPORT_STATUS_COLUMN_IDS.map((s) => ({
+            value: s,
+            label: statusLabelMap[s] || s,
+          }))}
+        />
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">{c('status')}: {c('all')}</option>
-            {SUPPORT_STATUS_COLUMN_IDS.map((s) => (
-              <option key={s} value={s}>{statusLabelMap[s] || s}</option>
-            ))}
-          </select>
           <select
             className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
             value={typeFilter}
@@ -420,6 +511,7 @@ export default function SupportsPage() {
             <option value="priorityScore">{tScores('sortByScore')}</option>
           </select>
         </div>
+        </>
       )}
 
       {isLoading ? (
@@ -480,7 +572,12 @@ export default function SupportsPage() {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{workspace?.name || '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">{support.code || '—'}</td>
-                    <td className="px-3 py-2 font-medium">{support.title}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{support.title}</span>
+                        <DeadlineRiskChip result={riskOf(support)} />
+                      </div>
+                    </td>
                     <td className="px-3 py-2">
                       <Badge variant="secondary" className={typeStyleMap[support.type] || 'bg-gray-100'}>
                         {t(support.type)}
