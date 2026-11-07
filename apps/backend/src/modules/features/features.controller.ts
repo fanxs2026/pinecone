@@ -11,6 +11,7 @@ import { AutomationService } from '../automation/automation.service';
 import { CreateFeatureDto } from './dto/create-feature.dto';
 import { UpdateFeatureDto } from './dto/update-feature.dto';
 import { SortFeatureDto } from './dto/sort-feature.dto';
+import { parseEntityFilter } from '../custom-fields/entity-filter';
 
 @ApiTags('Features')
 @ApiBearerAuth()
@@ -39,8 +40,27 @@ export class FeaturesController {
     @Query('sortBy') sortBy?: string,
     @Query('themeId') themeId?: string,
     @Query('minScore') minScore?: string,
+    @Query('cf') cf?: string,
   ) {
-    return this.featuresService.findAll(wsId, { releaseId, status, assigneeId, priority, parentFeatureId, isEpic: isEpic === '1', teamId, sortBy, themeId, minScore: minScore ? Number(minScore) : undefined }, 0, 50, { userId: req.user.id, role: req.workspaceMember.role });
+    return this.featuresService.findAll(
+      wsId,
+      {
+        releaseId,
+        status,
+        assigneeId,
+        priority,
+        parentFeatureId,
+        isEpic: isEpic === '1',
+        teamId,
+        sortBy,
+        themeId,
+        minScore: minScore ? Number(minScore) : undefined,
+        filter: parseEntityFilter(cf),
+      },
+      0,
+      50,
+      { userId: req.user.id, role: req.workspaceMember.role },
+    );
   }
 
   @Post()

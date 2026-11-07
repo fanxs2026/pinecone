@@ -1,5 +1,20 @@
-import { IsString, IsOptional, IsUUID, IsInt, Min, Max, MinLength, MaxLength, IsNumber, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsInt,
+  Min,
+  Max,
+  MinLength,
+  MaxLength,
+  IsNumber,
+  IsIn,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CustomFieldsProperty,
+  DueDateProperty,
+} from '../../../common/decorators/entity-attributes.decorator';
 import { STORY_KINDS, type StoryKind } from '../../../common/constants/entity-statuses';
 
 export class CreateStoryDto {
@@ -66,4 +81,10 @@ export class CreateStoryDto {
   @Max(10000)
   @IsOptional()
   estimateHours?: number;
+
+  @DueDateProperty()
+  dueDate?: string | null;
+
+  @CustomFieldsProperty()
+  customFields?: Record<string, unknown> | null;
 }

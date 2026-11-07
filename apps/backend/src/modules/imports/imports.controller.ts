@@ -42,13 +42,22 @@ export class ImportsController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const et = (entityType || 'SUPPORT').toUpperCase() as 'IDEA' | 'SUPPORT' | 'TEST_CASE';
-    const file = await this.service.generateTemplate(et);
+    const file = await this.service.generateTemplate(et, wsId);
     const filename = `template-${et.toLowerCase()}.xlsx`;
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
     });
     return file;
+  }
+
+  @Get('fields')
+  @UseGuards(WorkspaceRoleGuard)
+  @Roles('VIEWER')
+  @ApiOperation({ summary: '可映射字段清单（内置字段 + 启用中的自定义属性）' })
+  fields(@Param('wsId') wsId: string, @Query('entityType') entityType: string) {
+    const et = (entityType || 'SUPPORT').toUpperCase() as 'IDEA' | 'SUPPORT' | 'TEST_CASE';
+    return this.service.getImportableFields(wsId, et);
   }
 
   @Post('csv/upload')

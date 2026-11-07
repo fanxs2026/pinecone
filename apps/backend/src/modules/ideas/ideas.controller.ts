@@ -10,6 +10,7 @@ import { IdeasService } from './ideas.service';
 import { AutomationService } from '../automation/automation.service';
 import { CreateIdeaDto } from './dto/create-idea.dto';
 import { UpdateIdeaDto } from './dto/update-idea.dto';
+import { parseEntityFilter } from '../custom-fields/entity-filter';
 
 @ApiTags('Ideas')
 @ApiBearerAuth()
@@ -35,8 +36,24 @@ export class IdeasController {
     @Query('sortBy') sortBy?: string,
     @Query('themeId') themeId?: string,
     @Query('minScore') minScore?: string,
+    @Query('cf') cf?: string,
   ) {
-    return this.ideasService.findAll(wsId, { status, category, search, teamId, sortBy, themeId, minScore: minScore ? Number(minScore) : undefined }, 0, 50, { userId: req.user.id, role: req.workspaceMember.role });
+    return this.ideasService.findAll(
+      wsId,
+      {
+        status,
+        category,
+        search,
+        teamId,
+        sortBy,
+        themeId,
+        minScore: minScore ? Number(minScore) : undefined,
+        filter: parseEntityFilter(cf),
+      },
+      0,
+      50,
+      { userId: req.user.id, role: req.workspaceMember.role },
+    );
   }
 
   @Post()

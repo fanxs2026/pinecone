@@ -12,6 +12,8 @@ import { withCodeRetry } from '../../common/code-generator';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { attachVotesAndScores, attachVotesAndScoresToSingle, filterAndSortByMetrics, METRIC_FETCH_LIMIT } from '../../common/entity-metrics';
 import { EventsService } from '../events/events.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { EntityFilter } from '../custom-fields/entity-filter';
 import { publishEntityCreated, publishStatusChanged } from '../../common/entity-events';
 
 @Injectable()
@@ -23,11 +25,12 @@ export class FeaturesService {
     private notificationsService: NotificationsService,
     private workflowsService: WorkflowsService,
     private eventsService: EventsService,
+    private customFieldsService: CustomFieldsService,
   ) {}
 
   async findAll(
     workspaceId: string,
-    query: { releaseId?: string; status?: string; assigneeId?: string; priority?: string; parentFeatureId?: string; isEpic?: boolean; teamId?: string; sortBy?: string; themeId?: string; minScore?: number },
+    query: { releaseId?: string; status?: string; assigneeId?: string; priority?: string; parentFeatureId?: string; isEpic?: boolean; teamId?: string; sortBy?: string; themeId?: string; minScore?: number; filter?: EntityFilter | null },
     skip: number = 0,
     take: number = 50,
     visibility?: { userId?: string; role?: string },
@@ -47,6 +50,16 @@ export class FeaturesService {
         select: { teamId: true },
       });
       where.AND = [{ OR: [{ teamId: null }, { teamId: { in: tms.map((t) => t.teamId) } }] }];
+    }
+
+    // 复合筛选（状态/优先级/负责人/自定义属性）
+    const filterAnd = await this.customFieldsService.buildFilterConditions(
+      workspaceId,
+      'FEATURE',
+      query.filter ?? null,
+    );
+    if (filterAnd.length > 0) {
+      where.AND = Array.isArray(where.AND) ? [...where.AND, ...filterAnd] : filterAnd;
     }
 
     // 2026-08-15：命中指标过滤（排序/主题/最低分）时改为「全量拉取→attach→过滤排序→再分页」
@@ -143,6 +156,14 @@ export class FeaturesService {
       _max: { sortOrder: true },
     });
 
+    // 自定义属性：按工作区定义归一 + 校验；未提交则跳过
+    const customFields = await this.customFieldsService.normalize(
+      workspaceId,
+      'FEATURE',
+      dto.customFields,
+      { requireAll: true },
+    );
+
     const feature = await withCodeRetry(this.prisma, workspaceId, 'FEATURE', (code) =>
       this.prisma.feature.create({
         data: {
@@ -163,6 +184,10 @@ export class FeaturesService {
           createdById: userId,
           effortEstimate: dto.effortEstimate || null,
           effortUnit: dto.effortUnit || 'HOURS',
+          dueDate: dto.dueDate ?? null,
+          ...(customFields !== undefined
+            ? { customFields: customFields as Prisma.InputJsonValue }
+            : {}),
           sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
           tags: dto.tags ?? [],
         },
@@ -245,6 +270,18 @@ export class FeaturesService {
     }
     if (updateData.effortEstimate === null) {
       delete updateData.effortEstimate;
+    }
+
+    // 自定义属性：与库中现值合并后再校验必填，避免局部更新被必填规则误伤
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((existing.customFields as Record<string, unknown> | null) ?? {}),
+        ...(dto.customFields ?? {}),
+      };
+      const normalized = await this.customFieldsService.normalize(workspaceId, 'FEATURE', merged, {
+        requireAll: true,
+      });
+      updateData.customFields = normalized ?? {};
     }
 
     // Sync denormalized assigneeName when assigneeId changes

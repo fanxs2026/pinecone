@@ -11,6 +11,7 @@ import { AutomationService } from '../automation/automation.service';
 import { CreateStoryDto } from './dto/create-story.dto';
 import { UpdateStoryDto } from './dto/update-story.dto';
 import { SortStoryDto } from './dto/sort-story.dto';
+import { parseEntityFilter } from '../custom-fields/entity-filter';
 
 @ApiTags('Stories')
 @ApiBearerAuth()
@@ -38,8 +39,26 @@ export class StoriesController {
     @Query('parentId') parentId?: string,
     @Query('isSubtask') isSubtask?: string,
     @Query('teamId') teamId?: string,
+    @Query('cf') cf?: string,
   ) {
-    return this.storiesService.findAll(wsId, { featureId, status, assigneeId, priority, sprintId, backlog: backlog === '1', parentId, isSubtask: isSubtask === '1', teamId }, 0, 50, { userId: req.user.id, role: req.workspaceMember.role });
+    return this.storiesService.findAll(
+      wsId,
+      {
+        featureId,
+        status,
+        assigneeId,
+        priority,
+        sprintId,
+        backlog: backlog === '1',
+        parentId,
+        isSubtask: isSubtask === '1',
+        teamId,
+        filter: parseEntityFilter(cf),
+      },
+      0,
+      50,
+      { userId: req.user.id, role: req.workspaceMember.role },
+    );
   }
 
   @Post()

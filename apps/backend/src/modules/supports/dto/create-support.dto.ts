@@ -6,6 +6,10 @@ import {
   type SupportStatus,
   type SupportSeverity,
 } from '../../../common/constants/entity-statuses';
+import {
+  CustomFieldsProperty,
+  DueDateProperty,
+} from '../../../common/decorators/entity-attributes.decorator';
 
 export const SUPPORT_TYPES = ['SUPPORT_REQUEST', 'DEFECT'] as const;
 export type SupportType = (typeof SUPPORT_TYPES)[number];
@@ -74,4 +78,10 @@ export class CreateSupportDto {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @DueDateProperty()
+  dueDate?: string | null;
+
+  @CustomFieldsProperty()
+  customFields?: Record<string, unknown> | null;
 }

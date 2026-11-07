@@ -11,6 +11,8 @@ import type { Prisma } from '../../generated/client';
 import { withCodeRetry } from '../../common/code-generator';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { EventsService } from '../events/events.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { EntityFilter } from '../custom-fields/entity-filter';
 import { publishEntityCreated, publishStatusChanged } from '../../common/entity-events';
 
 @Injectable()
@@ -21,11 +23,12 @@ export class StoriesService {
     private notificationsService: NotificationsService,
     private workflowsService: WorkflowsService,
     private eventsService: EventsService,
+    private customFieldsService: CustomFieldsService,
   ) {}
 
   async findAll(
     workspaceId: string,
-    query: { featureId?: string; status?: string; assigneeId?: string; priority?: string; teamId?: string; sprintId?: string; backlog?: boolean; parentId?: string; isSubtask?: boolean },
+    query: { featureId?: string; status?: string; assigneeId?: string; priority?: string; teamId?: string; sprintId?: string; backlog?: boolean; parentId?: string; isSubtask?: boolean; filter?: EntityFilter | null },
     skip: number = 0,
     take: number = 50,
     visibility?: { userId?: string; role?: string },
@@ -50,6 +53,16 @@ export class StoriesService {
         select: { teamId: true },
       });
       where.AND = [{ OR: [{ teamId: null }, { teamId: { in: tms.map((t) => t.teamId) } }] }];
+    }
+
+    // 复合筛选（状态/优先级/负责人/自定义属性）：与团队隔离条件是 AND 关系
+    const filterAnd = await this.customFieldsService.buildFilterConditions(
+      workspaceId,
+      'STORY',
+      query.filter ?? null,
+    );
+    if (filterAnd.length > 0) {
+      where.AND = Array.isArray(where.AND) ? [...where.AND, ...filterAnd] : filterAnd;
     }
 
     const [items, total] = await this.prisma.$transaction([
@@ -163,6 +176,14 @@ export class StoriesService {
       assigneeName = u ? (u.name || u.email) : null;
     }
 
+    // 自定义属性：按工作区定义归一 + 校验；未提交（undefined）则跳过，不影响程序化创建
+    const customFields = await this.customFieldsService.normalize(
+      workspaceId,
+      'STORY',
+      dto.customFields,
+      { requireAll: true },
+    );
+
     const maxSort = await this.prisma.story.aggregate({
       where: { workspaceId, deletedAt: null },
       _max: { sortOrder: true },
@@ -190,6 +211,10 @@ export class StoriesService {
           assigneeName,
           createdById: userId,
           estimateHours: dto.estimateHours,
+          dueDate: dto.dueDate ?? null,
+          ...(customFields !== undefined
+            ? { customFields: customFields as Prisma.InputJsonValue }
+            : {}),
           sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
         },
         include: {
@@ -305,10 +330,25 @@ export class StoriesService {
       }
     }
 
+    // 自定义属性：与库中现值合并后再校验必填，避免局部更新被必填规则误伤。
+    // undefined 表示本次未提交该字段，保持原值不动；单个字段传 null 即清空该字段。
+    let customFieldsValue: Prisma.InputJsonValue | undefined;
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((existing.customFields as Record<string, unknown> | null) ?? {}),
+        ...(dto.customFields ?? {}),
+      };
+      const normalized = await this.customFieldsService.normalize(workspaceId, 'STORY', merged, {
+        requireAll: true,
+      });
+      customFieldsValue = (normalized ?? {}) as Prisma.InputJsonValue;
+    }
+
     const result = await this.prisma.story.update({
       where: { id },
       data: {
         ...dto,
+        customFields: customFieldsValue,
         ...(dto.estimateHours !== undefined ? { estimateHours: dto.estimateHours } : {}),
         ...(derivedAssigneeName !== undefined ? { assigneeName: derivedAssigneeName } : {}),
       },

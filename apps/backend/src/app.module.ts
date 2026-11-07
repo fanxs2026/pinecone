@@ -42,6 +42,8 @@ import { ThemesModule } from './modules/themes/themes.module';
 import { FeedbackPortalModule } from './modules/feedback-portal/feedback-portal.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { AutomationModule } from './modules/automation/automation.module';
+import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
+import { SavedViewsModule } from './modules/saved-views/saved-views.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { getEnterpriseModules } from './ee-gate';
 
@@ -54,7 +56,7 @@ import { getEnterpriseModules } from './ee-gate';
     WorkflowsModule, TimeTrackingModule, RealtimeModule,
     ActivitiesModule, CommentsModule, RelationsModule, SupportsModule,
     UploadsModule, KnowledgeBaseModule, DashboardModule, TodoItemsModule, RegistrationAdminModule,
-    EventsModule, TestCasesModule, MarketplaceModule, ImportsModule, TestAutomationModule, SprintsModule, SearchModule, ReportsModule, DashboardsModule, ShareModule, VotesModule, ScoresModule, ThemesModule, FeedbackPortalModule, NotificationsModule, TelemetryModule, TestPlansModule, AutomationModule,
+    EventsModule, TestCasesModule, MarketplaceModule, ImportsModule, TestAutomationModule, SprintsModule, SearchModule, ReportsModule, DashboardsModule, ShareModule, VotesModule, ScoresModule, ThemesModule, FeedbackPortalModule, NotificationsModule, TelemetryModule, TestPlansModule, AutomationModule, CustomFieldsModule, SavedViewsModule,
     // 企业版模块：社区版（默认）下 getEnterpriseModules() 返回空数组，编译产物不含企业实现
     ...getEnterpriseModules(),
   ],

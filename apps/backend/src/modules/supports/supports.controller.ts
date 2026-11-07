@@ -10,6 +10,7 @@ import { SupportsService } from './supports.service';
 import { AutomationService } from '../automation/automation.service';
 import { CreateSupportDto } from './dto/create-support.dto';
 import { UpdateSupportDto } from './dto/update-support.dto';
+import { parseEntityFilter } from '../custom-fields/entity-filter';
 
 @ApiTags('Supports')
 @ApiBearerAuth()
@@ -34,8 +35,23 @@ export class SupportsController {
     @Query('sortBy') sortBy?: string,
     @Query('themeId') themeId?: string,
     @Query('minScore') minScore?: string,
+    @Query('cf') cf?: string,
   ) {
-    return this.supportsService.findAll(wsId, { status, search, teamId, sortBy, themeId, minScore: minScore ? Number(minScore) : undefined }, 0, 50, { userId: req.user.id, role: req.workspaceMember.role });
+    return this.supportsService.findAll(
+      wsId,
+      {
+        status,
+        search,
+        teamId,
+        sortBy,
+        themeId,
+        minScore: minScore ? Number(minScore) : undefined,
+        filter: parseEntityFilter(cf),
+      },
+      0,
+      50,
+      { userId: req.user.id, role: req.workspaceMember.role },
+    );
   }
 
   @Post()

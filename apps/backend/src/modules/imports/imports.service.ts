@@ -7,6 +7,8 @@ import { withCodeRetry } from '../../common/code-generator';
 import { UploadCsvDto, ImportEntityType } from './dto/upload-csv.dto';
 import { ColumnMapping } from './dto/run-import.dto';
 import { ActivitiesService } from '../activities/activities.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import { parseOptions, type CustomFieldDef } from '../custom-fields/custom-field-validation';
 import { EntityType, ActionType } from '../../generated/enums';
 import type { Prisma } from '../../generated/client';
 // 2026-08-14：Excel 支持（模板生成 + 解析）；exceljs 是 CJS 包，用 import * as 避免 esModuleInterop 问题
@@ -97,6 +99,7 @@ export class ImportsService {
   constructor(
     private prisma: PrismaService,
     private activitiesService: ActivitiesService,
+    private customFieldsService: CustomFieldsService,
   ) {}
 
   async list(workspaceId: string) {
@@ -181,21 +184,62 @@ export class ImportsService {
     return { id: job.id, entityType: job.entityType, columnHeaders: job.columnHeaders, rowCount: job.rowCount, preview: job.preview };
   }
 
+  /** 导入可映射的自定义属性（仅 IDEA / SUPPORT 有值列） */
+  private async getImportableCustomFields(
+    workspaceId: string,
+    entityType: string,
+  ): Promise<CustomFieldDef[]> {
+    if (entityType !== 'IDEA' && entityType !== 'SUPPORT') return [];
+    return this.customFieldsService.getActiveDefs(workspaceId, entityType);
+  }
+
+  /**
+   * 可映射字段清单：内置字段 + 该工作区启用中的自定义属性（cf:<key>）。
+   * 前端映射向导据此渲染下拉，避免前后端各维护一份字段表。
+   */
+  async getImportableFields(workspaceId: string, entityType: ImportEntityType) {
+    const builtin = ALLOWED_FIELDS[entityType].map((field) => ({
+      field,
+      label: FIELD_LABELS[field] ?? field,
+      required: REQUIRED_FIELDS[entityType].includes(field),
+      custom: false,
+      type: 'TEXT' as string,
+      options: [] as string[],
+    }));
+
+    const cfDefs = await this.getImportableCustomFields(workspaceId, entityType);
+    const custom = cfDefs.map((def) => ({
+      field: `cf:${def.key}`,
+      label: def.label,
+      required: false,
+      custom: true,
+      type: def.type,
+      options: parseOptions(def.options).map((o) => o.value),
+    }));
+
+    return { entityType, fields: [...builtin, ...custom] };
+  }
+
   /**
    * 2026-08-14：生成导入模板（.xlsx）——表头（英文标识 (中文)）+ 示例行 +
    * 枚举字段下拉验证（dataValidation）+ 表头注释（notes，字段说明）。
    * 让用户按模板填写，合法值只能从下拉选。
    */
-  async generateTemplate(entityType: ImportEntityType): Promise<StreamableFile> {
-    const fields = ALLOWED_FIELDS[entityType];
+  async generateTemplate(entityType: ImportEntityType, workspaceId?: string): Promise<StreamableFile> {
+    // 工作区启用中的自定义属性一并进模板：列标识为 cf:<key>，与映射向导的取值一致
+    const cfDefs = workspaceId ? await this.getImportableCustomFields(workspaceId, entityType) : [];
+    const cfByField = new Map(cfDefs.map((d) => [`cf:${d.key}`, d]));
+    const labelOf = (f: string) => cfByField.get(f)?.label ?? FIELD_LABELS[f] ?? f;
+
+    const fields = [...ALLOWED_FIELDS[entityType], ...cfDefs.map((d) => `cf:${d.key}`)];
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('导入模板');
 
     // 表头（英文标识 (中文)）
-    const headerRow = fields.map((f) => `${f} (${FIELD_LABELS[f] ?? f})`);
+    const headerRow = fields.map((f) => `${f} (${labelOf(f)})`);
     ws.addRow(headerRow);
-    // 示例行
-    ws.addRow(fields.map((f) => SAMPLE_VALUES[entityType][f] ?? ''));
+    // 示例行（自定义属性留空，避免让用户以为必须照抄）
+    ws.addRow(fields.map((f) => (cfByField.has(f) ? '' : SAMPLE_VALUES[entityType][f] ?? '')));
 
     // 表头样式：加粗 + 底色 + 冻结
     const header = ws.getRow(1);
@@ -208,9 +252,12 @@ export class ImportsService {
       // 列字母（模板最多 8 列，A-H 足够；ExcelJS.utils 在部分类型版本缺失，自算）
       const colLetter = String.fromCharCode(65 + i);
       const col = ws.getColumn(i + 1);
-      col.width = Math.max(18, (f + (FIELD_LABELS[f] ?? '')).length + 8);
+      col.width = Math.max(18, (f + labelOf(f)).length + 8);
 
-      const options = FIELD_OPTIONS[entityType]?.[f];
+      const cfDef = cfByField.get(f);
+      const options = cfDef
+        ? parseOptions(cfDef.options).map((o) => o.value)
+        : FIELD_OPTIONS[entityType]?.[f];
       if (options && options.length > 0) {
         // 数据验证：下拉只能选合法值（应用到示例行之下 500 行）
         ws.getCell(2, i + 1).dataValidation = {
@@ -277,15 +324,19 @@ export class ImportsService {
       throw new BadRequestException('Import job already executed');
     }
 
-    // 校验映射合法性
+    // 校验映射合法性：内置字段走白名单，自定义属性用 cf:<key> 前缀并核对定义是否启用
     const fieldAllowlist = ALLOWED_FIELDS[job.entityType as ImportEntityType];
+    const cfDefs = await this.getImportableCustomFields(job.workspaceId, job.entityType);
+    const cfKeys = new Set(cfDefs.map((d) => d.key));
     const resolved: Record<number, ColumnMapping> = {};
     for (const [idxStr, col] of Object.entries(mapping)) {
       const idx = Number(idxStr);
       if (!Number.isInteger(idx) || idx < 0 || idx >= job.columnHeaders.length) {
         throw new BadRequestException(`Invalid column index: ${idxStr}`);
       }
-      if (!fieldAllowlist.includes(col.field)) {
+      const isBuiltin = fieldAllowlist.includes(col.field);
+      const cfKey = col.field.startsWith('cf:') ? col.field.slice(3) : null;
+      if (!isBuiltin && !(cfKey && cfKeys.has(cfKey))) {
         throw new BadRequestException(`Field "${col.field}" is not importable for ${job.entityType}`);
       }
       resolved[idx] = col;
@@ -303,7 +354,14 @@ export class ImportsService {
     for (let i = 0; i < rows.length; i++) {
       const rowNo = i + 2; // 1-based 数据行（含表头偏移）
       try {
-        const data = await this.buildEntityData(job.workspaceId, job.entityType as ImportEntityType, rows[i], resolved, defaults);
+        const data = await this.buildEntityData(
+          job.workspaceId,
+          job.entityType as ImportEntityType,
+          rows[i],
+          resolved,
+          defaults,
+          cfDefs,
+        );
         await this.createEntity(job.workspaceId, job.entityType as ImportEntityType, data, userId);
         success++;
       } catch (err: any) {
@@ -351,8 +409,10 @@ export class ImportsService {
     row: string[],
     mapping: Record<number, ColumnMapping>,
     defaults: Record<string, unknown>,
+    cfDefs: CustomFieldDef[],
   ): Promise<Record<string, unknown>> {
     const data: Record<string, unknown> = { ...defaults };
+    const customValues: Record<string, unknown> = {};
 
     for (const [idxStr, col] of Object.entries(mapping)) {
       const idx = Number(idxStr);
@@ -360,14 +420,46 @@ export class ImportsService {
       // 自定义 valueMap 优先，其次内置默认映射
       if (col.valueMap && col.valueMap[value] !== undefined) {
         value = col.valueMap[value];
-      } else if (value) {
+      } else if (value && !col.field.startsWith('cf:')) {
         value = mapValue(col.field, value);
       }
       if (value === '' || value === undefined) continue;
+
+      // 自定义属性：按字段类型归一到 JSONB 值的形状
+      if (col.field.startsWith('cf:')) {
+        const key = col.field.slice(3);
+        const def = cfDefs.find((d) => d.key === key);
+        if (!def) continue;
+        if (def.type === 'MULTI_SELECT') {
+          customValues[key] = String(value)
+            .split(/[;|,]/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        } else if (def.type === 'CHECKBOX') {
+          customValues[key] = /^(是|true|1|y|yes)$/i.test(String(value).trim());
+        } else {
+          customValues[key] = String(value).trim();
+        }
+        continue;
+      }
+
       if (col.field === 'tags') {
         data.tags = String(value).split(/[;|]/).map((s) => s.trim()).filter(Boolean);
       } else {
         data[col.field] = value;
+      }
+    }
+
+    // 自定义属性值按定义校验（导入不强制必填，缺失记入行错误由上层收集）
+    if (Object.keys(customValues).length > 0 && (entityType === 'IDEA' || entityType === 'SUPPORT')) {
+      const normalized = await this.customFieldsService.normalize(
+        workspaceId,
+        entityType,
+        customValues,
+        { requireAll: false },
+      );
+      if (normalized && Object.keys(normalized).length > 0) {
+        data.customFields = normalized;
       }
     }
 
@@ -438,13 +530,13 @@ export class ImportsService {
       case 'IDEA':
         return withCodeRetry(this.prisma, workspaceId, 'IDEA', (code) =>
           this.prisma.idea.create({
-            data: { workspaceId, code, title: String(data.title), description: (data.description as string) ?? undefined, category: (data.category as string) ?? undefined, status: (data.status as string) || 'OPEN', assigneeId: (data.assigneeId as string) ?? null, assigneeName: (data.assigneeName as string) ?? null, tags: (data.tags as string[]) ?? [], createdById: userId },
+            data: { workspaceId, code, title: String(data.title), description: (data.description as string) ?? undefined, category: (data.category as string) ?? undefined, status: (data.status as string) || 'OPEN', assigneeId: (data.assigneeId as string) ?? null, assigneeName: (data.assigneeName as string) ?? null, tags: (data.tags as string[]) ?? [], customFields: (data.customFields as Prisma.InputJsonValue) ?? undefined, createdById: userId },
           }),
         );
       case 'SUPPORT':
         return withCodeRetry(this.prisma, workspaceId, 'SUPPORT', (code) =>
           this.prisma.support.create({
-            data: { workspaceId, code, title: String(data.title), description: (data.description as string) ?? undefined, status: (data.status as string) || 'OPEN', type: (data.type as string) || 'SUPPORT_REQUEST', releaseId: (data.releaseId as string) ?? null, assigneeId: (data.assigneeId as string) ?? null, assigneeName: (data.assigneeName as string) ?? null, tags: (data.tags as string[]) ?? [], createdById: userId },
+            data: { workspaceId, code, title: String(data.title), description: (data.description as string) ?? undefined, status: (data.status as string) || 'OPEN', type: (data.type as string) || 'SUPPORT_REQUEST', releaseId: (data.releaseId as string) ?? null, assigneeId: (data.assigneeId as string) ?? null, assigneeName: (data.assigneeName as string) ?? null, tags: (data.tags as string[]) ?? [], customFields: (data.customFields as Prisma.InputJsonValue) ?? undefined, createdById: userId },
           }),
         );
       case 'TEST_CASE':

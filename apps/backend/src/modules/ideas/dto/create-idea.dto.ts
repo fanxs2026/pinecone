@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsUUID, MinLength, MaxLength, IsArray, IsIn } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { IDEA_STATUSES, type IdeaStatus } from '../../../common/constants/entity-statuses';
+import { CustomFieldsProperty } from '../../../common/decorators/entity-attributes.decorator';
 
 export class CreateIdeaDto {
   @ApiProperty()
@@ -43,4 +44,7 @@ export class CreateIdeaDto {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @CustomFieldsProperty()
+  customFields?: Record<string, unknown> | null;
 }

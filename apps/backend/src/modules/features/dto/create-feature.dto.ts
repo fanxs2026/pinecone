@@ -1,5 +1,9 @@
 import { IsString, IsOptional, IsUUID, MinLength, MaxLength, IsArray, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CustomFieldsProperty,
+  DueDateProperty,
+} from '../../../common/decorators/entity-attributes.decorator';
 
 export class CreateFeatureDto {
   @ApiProperty()
@@ -56,4 +60,10 @@ export class CreateFeatureDto {
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @DueDateProperty()
+  dueDate?: string | null;
+
+  @CustomFieldsProperty()
+  customFields?: Record<string, unknown> | null;
 }

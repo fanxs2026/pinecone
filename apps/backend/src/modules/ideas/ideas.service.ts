@@ -11,6 +11,8 @@ import { withCodeRetry } from '../../common/code-generator';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { attachVotesAndScores, attachVotesAndScoresToSingle, filterAndSortByMetrics, METRIC_FETCH_LIMIT } from '../../common/entity-metrics';
 import { EventsService } from '../events/events.service';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service';
+import type { EntityFilter } from '../custom-fields/entity-filter';
 import { publishEntityCreated, publishStatusChanged } from '../../common/entity-events';
 
 @Injectable()
@@ -22,11 +24,12 @@ export class IdeasService {
     private notificationsService: NotificationsService,
     private workflowsService: WorkflowsService,
     private eventsService: EventsService,
+    private customFieldsService: CustomFieldsService,
   ) {}
 
   async findAll(
     workspaceId: string,
-    query: { status?: string; category?: string; search?: string; teamId?: string; sortBy?: string; themeId?: string; minScore?: number },
+    query: { status?: string; category?: string; search?: string; teamId?: string; sortBy?: string; themeId?: string; minScore?: number; filter?: EntityFilter | null },
     skip: number = 0,
     take: number = 50,
     visibility?: { userId?: string; role?: string },
@@ -49,6 +52,16 @@ export class IdeasService {
         { title: { contains: query.search, mode: 'insensitive' } },
         { description: { contains: query.search, mode: 'insensitive' } },
       ];
+    }
+
+    // 复合筛选（状态/优先级/负责人/自定义属性）：追加到 AND，不覆盖搜索的 OR
+    const filterAnd = await this.customFieldsService.buildFilterConditions(
+      workspaceId,
+      'IDEA',
+      query.filter ?? null,
+    );
+    if (filterAnd.length > 0) {
+      where.AND = Array.isArray(where.AND) ? [...where.AND, ...filterAnd] : filterAnd;
     }
 
     // 2026-08-15：命中指标过滤（排序/主题/最低分）时改为「全量拉取→attach→过滤排序→再分页」，
@@ -127,6 +140,14 @@ export class IdeasService {
       assigneeName = u ? (u.name || u.email) : null;
     }
 
+    // 自定义属性：按工作区定义归一 + 校验；未提交则跳过
+    const customFields = await this.customFieldsService.normalize(
+      workspaceId,
+      'IDEA',
+      dto.customFields,
+      { requireAll: true },
+    );
+
     const idea = await withCodeRetry(this.prisma, workspaceId, 'IDEA', (code) =>
       this.prisma.idea.create({
         data: {
@@ -140,6 +161,9 @@ export class IdeasService {
           teamId: dto.teamId ?? null,
           assigneeName,
           createdById: userId,
+          ...(customFields !== undefined
+            ? { customFields: customFields as Prisma.InputJsonValue }
+            : {}),
           tags: dto.tags ?? [],
         },
         include: {
@@ -196,6 +220,18 @@ export class IdeasService {
     // client-supplied value to prevent display spoofing.
     const updateData: Record<string, unknown> = { ...dto };
     delete updateData.assigneeName;
+
+    // 自定义属性：与库中现值合并后再校验必填，避免局部更新被必填规则误伤
+    if (dto.customFields !== undefined) {
+      const merged = {
+        ...((existing.customFields as Record<string, unknown> | null) ?? {}),
+        ...(dto.customFields ?? {}),
+      };
+      const normalized = await this.customFieldsService.normalize(workspaceId, 'IDEA', merged, {
+        requireAll: true,
+      });
+      updateData.customFields = normalized ?? {};
+    }
 
     // Sync denormalized assigneeName when assigneeId changes
     if (dto.assigneeId !== undefined) {
