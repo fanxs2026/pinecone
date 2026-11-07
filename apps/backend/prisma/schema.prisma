@@ -85,6 +85,7 @@ model User {
   installedPluginsCreated InstalledPlugin[] @relation("PluginInstaller")
   kbPageLinksCreated KbPageLink[]       @relation("KbPageLinkCreator")
   kbPageVersionsEdited KbPageVersion[]  @relation("KbPageVersionEditor")
+  savedViewsCreated  SavedView[]        @relation("SavedViewCreator")
 
   @@map("users")
 }
@@ -135,6 +136,7 @@ model Workspace {
   scimConfig        ScimConfig?
   scimGroups        ScimGroup[]
   notifications     Notification[]
+  customFields      CustomField[]
   automationRules   AutomationRule[]
   teams             Team[]
   sprints           Sprint[]
@@ -153,6 +155,7 @@ model Workspace {
   dashboards        Dashboard[]
   reportSubscriptions ReportSubscription[]
   kbPageLinks       KbPageLink[]
+  savedViews        SavedView[]
 
   @@map("workspaces")
 }
@@ -188,6 +191,7 @@ model Idea {
   updatedAt    DateTime @updatedAt
   deletedAt   DateTime?
   tags         String[]
+  customFields Json?    @map("custom_fields") // 工作区自定义属性值，定义见 CustomField
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   assignee  User?     @relation("IdeaAssignee", fields: [assigneeId], references: [id])
@@ -256,6 +260,8 @@ model Feature {
   updatedAt        DateTime @updatedAt
   deletedAt   DateTime?
   tags             String[]
+  customFields     Json?    @map("custom_fields") // 工作区自定义属性值，定义见 CustomField
+  dueDate          DateTime? @db.Date @map("due_date") // 承诺完成日（风险计算的回退链起点）
 
   workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   release      Release?   @relation(fields: [releaseId], references: [id], onDelete: SetNull)
@@ -269,6 +275,7 @@ model Feature {
   @@index([workspaceId, status])
   @@index([assigneeId])
   @@index([createdById])
+  @@index([workspaceId, dueDate])
   @@map("features")
 }
 
@@ -296,6 +303,8 @@ model Story {
   updatedAt           DateTime @updatedAt
   deletedAt   DateTime?
   kind                String   @default("FEATURE") // FEATURE | DEFECT | CHORE（缺陷/技术债子类型）
+  customFields        Json?    @map("custom_fields") // 工作区自定义属性值，定义见 CustomField
+  dueDate             DateTime? @db.Date @map("due_date") // 承诺完成日（风险计算的回退链起点）
 
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   feature     Feature     @relation(fields: [featureId], references: [id], onDelete: Cascade)
@@ -313,6 +322,7 @@ model Story {
   @@index([assigneeId])
   @@index([createdById])
   @@index([releaseId])
+  @@index([workspaceId, dueDate])
   @@map("stories")
 }
 
@@ -336,6 +346,8 @@ model Support {
   updatedAt    DateTime @updatedAt
   deletedAt   DateTime?
   tags         String[]
+  customFields Json?    @map("custom_fields") // 工作区自定义属性值，定义见 CustomField
+  dueDate      DateTime? @db.Date @map("due_date") // 承诺完成日（风险计算的回退链起点）
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User      @relation("SupportCreator", fields: [createdById], references: [id])
@@ -347,6 +359,7 @@ model Support {
   @@index([createdById])
   @@index([assigneeId])
   @@index([workspaceId, releaseId])
+  @@index([workspaceId, dueDate])
   @@map("supports")
 }
 
@@ -1472,4 +1485,55 @@ model Setting {
   updatedAt DateTime @updatedAt      @map("updated_at")
 
   @@map("settings")
+}
+
+// ===== 工作区自定义属性（2026-11-02）：定义与值分离。
+// 定义落本表（类型/必填/选项/排序/归档），值落各实体的 custom_fields JSONB 列，
+// 读取实体零 join；字段归档（isActive=false）后保留历史值，读取时按当前定义投影，
+// 避免定义删除后详情页出现游离数据。 =====
+model CustomField {
+  id           String     @id @default(uuid()) @db.Uuid
+  workspaceId  String     @db.Uuid
+  entityType   EntityType
+  key          String // 机器名，工作区内同实体类型下唯一
+  label        String // 展示名
+  type         String     @default("TEXT") // TEXT|NUMBER|SELECT|MULTI_SELECT|DATE|CHECKBOX|URL
+  options      Json? // SELECT / MULTI_SELECT 选项：[{ value, label }]
+  isRequired   Boolean    @default(false)
+  defaultValue Json?
+  description  String?    @db.Text
+  sortOrder    Int        @default(0)
+  isActive     Boolean    @default(true) // 归档标记，false 时前端不再展示与填写
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, entityType, key])
+  @@index([workspaceId, entityType, isActive])
+  @@map("custom_fields")
+}
+
+// ===== 列表保存视图（2026-11-02）：把筛选条件与列配置按实体类型存下来。
+// filters 与列表查询参数 cf 同结构（JSON 字符串存成 Json），columns 为列 key 数组，
+// 元素是内置列标识或 cf:<字段key>。个人视图仅创建者可见，共享视图工作区成员均可读取。=====
+model SavedView {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @db.Uuid
+  entityType  EntityType
+  name        String
+  filters     Json
+  columns     Json?
+  isShared    Boolean    @default(false)
+  createdById String     @db.Uuid
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("SavedViewCreator", fields: [createdById], references: [id])
+
+  @@unique([workspaceId, entityType, name])
+  @@index([workspaceId, entityType])
+  @@map("saved_views")
 }
