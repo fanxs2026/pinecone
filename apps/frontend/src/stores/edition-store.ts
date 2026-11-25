@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiBaseUrl } from '@/lib/runtime-config';
 
 /**
  * 版本信息 store（社区版 / 企业版）。
@@ -24,7 +25,7 @@ export const useEditionStore = create<EditionState>()((set) => ({
   loaded: false,
   loadBootstrap: async () => {
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const base = apiBaseUrl();
       const r = await fetch(`${base}/bootstrap`, { cache: 'no-store' });
       if (!r.ok) return; // bootstrap 失败 → 保持 community（fail-closed，不显示企业功能）
       const data = await r.json();

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
 import { authApi } from '@/lib/auth-api';
+import { apiBaseUrl } from '@/lib/runtime-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,7 +34,7 @@ export default function LoginPage() {
 
   // 查询可用 SSO（登录页直接列出全部活跃 provider）
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}/auth/sso/providers`)
+    fetch(`${apiBaseUrl()}/auth/sso/providers`)
       .then((r) => r.json())
       .then((data) => setSsoProviders(Array.isArray(data) ? data : []))
       .catch(() => setSsoProviders([]));
@@ -49,7 +50,7 @@ export default function LoginPage() {
           ? `/auth/saml/${providerId}/login`
           : `/auth/sso/${providerId}/authorize`;
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}${endpoint}`,
+        `${apiBaseUrl()}${endpoint}`,
         { headers: { Origin: window.location.origin } },
       );
       const data = await res.json();

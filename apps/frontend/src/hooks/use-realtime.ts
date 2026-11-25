@@ -3,10 +3,10 @@
 import { useEffect, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useAuthStore } from '@/stores/auth-store';
+import { realtimeUrl } from '@/lib/runtime-config';
 
-// 2026-08-15 修复：后端 3000 是 HTTPS（HTTPS_ENABLED=true），默认 ws 地址必须用 https:// 前缀，
-// 否则 Socket.IO 连 http 端口必然失败 → 客户端无限重连（浪费资源且控制台刷错）
-const SOCKET_URL = process.env.NEXT_PUBLIC_WS_URL || 'https://localhost:3000/ws';
+// 运行期解析（见 lib/runtime-config.ts）：不能放在模块顶层求值，
+// 否则 client component 在 SSR 阶段就被求值成 '/ws' 并缓存下来。
 
 interface RealtimeHandlers {
   onActivity?: (data: any) => void;
@@ -26,7 +26,7 @@ export function useRealtime(workspaceId: string | null, handlers?: RealtimeHandl
     // 内存有 token 时仍显式传递（兼容 & 更快），没有则完全依赖 cookie。
     if (!isAuthenticated) return;
 
-    const socket = io(SOCKET_URL, {
+    const socket = io(realtimeUrl(), {
       ...(accessToken ? { auth: { token: accessToken } } : {}),
       transports: ['websocket'],
     });

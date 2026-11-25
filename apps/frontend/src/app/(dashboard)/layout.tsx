@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useEditionStore } from '@/stores/edition-store';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { cn } from '@/lib/utils';
+import { apiBaseUrl } from '@/lib/runtime-config';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import SimpleToast from '@/components/simple-toast';
@@ -113,7 +114,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // 再清前端状态——否则服务端会话仍有效 7 天，被窃 cookie 无法撤销
   const handleLogout = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'}/auth/logout`, {
+      const res = await fetch(`${apiBaseUrl()}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       });

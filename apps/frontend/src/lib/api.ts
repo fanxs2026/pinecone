@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth-store';
+import { apiBaseUrl } from '@/lib/runtime-config';
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
+  // 运行期解析：便携版换 IP/端口无需重新构建（见 lib/runtime-config.ts）
+  baseURL: apiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

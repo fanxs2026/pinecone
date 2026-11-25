@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
@@ -41,6 +42,9 @@ export default async function RootLayout({
   return (
     <html lang={validLocale === 'zh' ? 'zh-CN' : 'en'} suppressHydrationWarning>
       <body className={inter.className}>
+        {/* 运行期配置：便携版启动时由 bin/run-frontend.js 依 .env 生成，
+            必须在任何应用代码之前执行，故用 beforeInteractive。 */}
+        <Script src="/runtime-config.js" strategy="beforeInteractive" />
         <PwaRegister />
         <NextIntlClientProvider locale={validLocale} messages={messages}>
           <Providers>{children}</Providers>

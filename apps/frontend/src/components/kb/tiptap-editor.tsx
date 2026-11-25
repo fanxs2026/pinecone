@@ -21,6 +21,7 @@ import { Image } from '@tiptap/extension-image';
 import Collaboration from '@tiptap/extension-collaboration';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
+import { kbCollabUrl, kbCollabPort } from '@/lib/runtime-config';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   Palette, Highlighter,
@@ -201,10 +202,10 @@ export function TiptapEditor({
     const ydoc = new Y.Doc();
     // B4 修复（2026-08-19 上线前全检）：kb-collab WS 地址可配置（NEXT_PUBLIC_KB_COLLAB_URL，
     // 生产经 Docker build arg 注入，如 wss://host:3002/kb-collab）；未配置时回退同源 3002
-    const configured = process.env.NEXT_PUBLIC_KB_COLLAB_URL;
+    const configured = kbCollabUrl();
     const wsUrl =
       configured ||
-      `${typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:3002/kb-collab`;
+      `${typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:${kbCollabPort()}/kb-collab`;
     const provider = new WebsocketProvider(
       wsUrl,
       collab.pageId,
