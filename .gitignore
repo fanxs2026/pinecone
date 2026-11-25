@@ -108,3 +108,16 @@ STATUS_COLORS_DESIGN.md
 # backup snapshots (never commit)
 .git.before-*/
 .git.bak/
+
+# enterprise build scratch (never commit; contains overlay code)
+apps/backend/.ee-build/
+
+# licence signing keys must never be committed
+*license-private*.pem
+
+# licence signing toolchain must not be published: these can mint valid
+# enterprise licences when a private key is present. Vendor-side only.
+scripts/license-keygen.js
+scripts/license-sign.js
+scripts/license-issue.js
+scripts/lib/licence-key.js
