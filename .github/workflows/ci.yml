@@ -52,12 +52,29 @@ jobs:
       #   ② 去掉 --report-format=sarif / --report-path：SARIF 是较新版本才支持的输出格式，
       #      版本不匹配时 gitleaks 会以 exit 1 直接失败；且本 workflow 并未上传该报告，无必要生成。
       #   注意 --exit-code=2 语义：2=发现泄露、1=执行错误，看日志时可据此区分。
+      # 2026-11-25 修正（第三次，v2 也失效了）：实测 gitleaks-action@v2 同样不接受 args
+      #   （日志：Warning: Unexpected input(s) 'args', valid inputs are ['']），参数依旧被
+      #   静默丢弃，回落到 git 区间模式后再次 unknown revision -> exit 1。
+      #   结论：不再经过 action，直接下载并调用 gitleaks 二进制，彻底摆脱输入兼容性。
+      #   --no-git 全量扫工作区：不依赖 git 历史；本步位于 pnpm 安装之前，目录里只有仓库
+      #   文件，既快又不会被 node_modules 干扰。
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: detect --no-git --redact --exit-code=2 --config .gitleaks.toml
+          GITLEAKS_VERSION: 8.24.3
+        run: |
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-delay 2 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+          # 8.19+ 用 dir 子命令扫目录，旧版用 detect --no-git；按可用性选择，
+          # 两种写法都不依赖 git 历史。set -e 保证退出码（2=发现泄露）原样上报。
+          if /tmp/gitleaks dir --help >/dev/null 2>&1; then
+            /tmp/gitleaks dir . --redact --exit-code=2 --config .gitleaks.toml --verbose
+          else
+            /tmp/gitleaks detect --no-git --redact --exit-code=2 --config .gitleaks.toml --verbose
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6

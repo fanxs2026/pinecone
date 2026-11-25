@@ -135,8 +135,8 @@ async function register(email) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
-      // 一次性测试库的临时口令，不是真实凭据
-      password: 'E2E-Only-N0t-A-Real-Secret',
+      // 运行时生成，仓库里不留任何像凭据的字面量（gitleaks 门禁会扫脚本）
+      password: 'E2e' + Date.now().toString(36) + 'a1',
       name: email.split('@')[0],
     }),
   });
