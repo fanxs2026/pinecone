@@ -1,9 +1,10 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes, timingSafeEqual, scrypt, createHash } from 'node:crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getEffectiveRegistrationMode } from '../../common/config/registration-mode';
+import { firstUserBecomesAdminEnabled } from '../../common/config/platform-admin';
 import { MailService } from '../mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -184,6 +185,21 @@ export class AuthService {
         throw new ConflictException('Email already registered');
       }
       throw e;
+    }
+
+    // 首个注册用户自动成为平台管理员（便携包默认开启，见 .env FIRST_USER_BECOMES_ADMIN）
+    // 只有「库里恰好只有这一个用户」才授予：并发注册时会变成 2，宁漏授不误授。
+    if (firstUserBecomesAdminEnabled()) {
+      const total = await this.prisma.user.count();
+      if (total === 1 && user.isSystemAdmin !== true) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { isSystemAdmin: true },
+        });
+        new Logger('PlatformAdmin').log(
+          `first user ${user.email} granted platform admin (FIRST_USER_BECOMES_ADMIN=true)`,
+        );
+      }
     }
 
     const tokens = await this.generateTokens(user.id, user.email);

@@ -3,7 +3,7 @@ import { resolve } from 'path';
 loadEnv({ path: resolve(__dirname, '../../../.env') });
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
@@ -11,6 +11,11 @@ import { readFileSync } from 'fs';
 import { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { runWithRequestContext } from './common/request-context';
+import { getEffectiveEdition, getPineEdition } from './common/config/edition';
+import { describeLicense } from './common/license/license-state';
+import { isEnterprisePayloadPresent } from './common/license/ee-payload';
+import { firstUserBecomesAdminEnabled } from './common/config/platform-admin';
+import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   // HTTPS 支持：配置 HTTPS_ENABLED=true + HTTPS_CERT_PATH/HTTPS_KEY_PATH 后以 https 监听
@@ -68,16 +73,36 @@ async function bootstrap() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  app.enableCors({
-    origin: (origin, cb) => {
-      // Allow non-browser clients (curl, mobile) and same-origin requests.
-      if (!origin || allowedOrigins.includes(origin)) {
-        cb(null, true);
-      } else {
-        cb(null, false);
+
+  // 便携版/局域网部署：前端与后端同机不同端口，客户用 192.168.x.x 打开 UI 时，
+  // Origin 的 hostname 与 API 请求的 Host 相同。此时 FRONTEND_URL 白名单必然对不上。
+  // 默认关闭（Docker/托管保持严格白名单），仅 CORS_ALLOW_SAME_HOST=true 时放行，
+  // 且只放行 hostname 完全一致（或互为 loopback）的来源，不会放宽到任意站点。
+  const allowSameHost = (process.env.CORS_ALLOW_SAME_HOST || 'false').toLowerCase() === 'true';
+  const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+  app.enableCors((req: Request, cb) => {
+    const origin = req.header('Origin');
+    const grant = { origin: true, credentials: true };
+    const deny = { origin: false };
+
+    // Non-browser clients (curl, mobile, server-side) send no Origin header.
+    if (!origin) return cb(null, grant);
+    if (allowedOrigins.includes(origin)) return cb(null, grant);
+
+    if (allowSameHost) {
+      try {
+        const originHost = new URL(origin).hostname;
+        const reqHost = String(req.headers.host || '').split(':')[0];
+        const sameHost =
+          originHost === reqHost ||
+          (LOOPBACK_HOSTS.has(originHost) && LOOPBACK_HOSTS.has(reqHost));
+        if (sameHost) return cb(null, grant);
+      } catch {
+        // malformed Origin -> fall through to deny
       }
-    },
-    credentials: true,
+    }
+    return cb(null, deny);
   });
 
   // Baseline security headers (OWASP Secure Headers Project).
@@ -118,6 +143,55 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 3000;
+
+  // 版本与授权状态：一眼看出「声明了企业版但实际跑社区版」的原因
+  const declared = getPineEdition();
+  const effective = getEffectiveEdition();
+  const editionLogger = new Logger('Edition');
+  editionLogger.log(
+    `declared=${declared} effective=${effective} | licence: ${describeLicense()} | ee-payload=${
+      isEnterprisePayloadPresent() ? 'present' : 'absent'
+    }`
+  );
+  if (declared === 'enterprise' && effective !== 'enterprise') {
+    editionLogger.warn(
+      'Enterprise edition not active -> running as community. Check the line above: ' +
+        'licence state and ee-payload presence are the two usual causes.',
+    );
+  }
+
+  // 首次部署提示：开关开启但库里一个用户都没有 → 打印醒目横幅。
+  // 注意：便携包里后端窗口是最小化的、日志被重定向，所以这里必须打一个
+  // **纯 ASCII 固定标记** FIRST-RUN-ADMIN-PENDING，供 start.bat 用 findstr 捕获后
+  // 在客户看得见的控制台再提示一次。改标记时务必同步 scripts/pack-portable.js。
+  if (firstUserBecomesAdminEnabled()) {
+    try {
+      const prisma = app.get(PrismaService);
+      const userCount = await prisma.user.count();
+      if (userCount === 0) {
+        const frontendPort = process.env.FRONTEND_PORT || '6173';
+        const bar = '='.repeat(66);
+        new Logger('FirstRun').warn(
+          [
+            '',
+            bar,
+            '  FIRST-RUN-ADMIN-PENDING',
+            '  数据库里还没有任何用户。第一个注册的账号会自动成为平台管理员。',
+            `  请立即打开 http://<本机IP>:${frontendPort} 完成管理员注册。`,
+            '  注册完成后，把 .env 的 FIRST_USER_BECOMES_ADMIN 改为 false 更安全。',
+            bar,
+            '',
+          ].join('\n')
+        );
+      }
+    } catch (e) {
+      // 数据库未就绪不应阻塞启动，仅提示
+      new Logger('FirstRun').warn(
+        '无法检查用户表（数据库可能未就绪）: ' + (e as Error).message
+      );
+    }
+  }
+
   await app.listen(port);
   const scheme = httpsOptions ? 'https' : 'http';
   console.log(`Pinecone API running on ${scheme}://localhost:${port}`);

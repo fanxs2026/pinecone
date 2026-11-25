@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, ConflictException } 
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getEffectiveRegistrationMode } from '../../common/config/registration-mode';
+import { isPlatformAdmin } from '../../common/config/platform-admin';
 import { AddWhitelistDto, CreateInviteCodeDto, UpdateInviteCodeDto } from './dto/registration-admin.dto';
 
 /**
@@ -13,13 +14,9 @@ import { AddWhitelistDto, CreateInviteCodeDto, UpdateInviteCodeDto } from './dto
 export class RegistrationAdminService {
   constructor(private prisma: PrismaService) {}
 
-  private isAdmin(user: { id: string; email: string }): boolean {
-    const admins = (process.env.REGISTRATION_ADMIN_EMAILS || '')
-      .split(',')
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    if (admins.length === 0) return false;
-    return admins.includes(user.email.toLowerCase());
+  private isAdmin(user: { id: string; email: string; isSystemAdmin?: boolean }): boolean {
+    // 数据库标记（首个注册用户自动授予）或 env 邮箱名单，任一成立即可
+    return isPlatformAdmin(user);
   }
 
   assertAdmin(user: { id: string; email: string }) {

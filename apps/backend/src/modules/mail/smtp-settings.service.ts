@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService, type SmtpOptions } from './mail.service';
 import { encryptSecret, decryptSecret } from '../../common/utils/secret-cipher';
+import { isPlatformAdmin } from '../../common/config/platform-admin';
 
 const SMTP_SETTINGS_KEY = 'smtp';
 
@@ -175,14 +176,9 @@ export class SmtpSettingsService implements OnModuleInit {
     }
   }
 
-  /** 管理权限判定：REGISTRATION_ADMIN_EMAILS 名单（与 license 管理端一致） */
-  isAdmin(user: { email: string }): boolean {
-    const admins = (process.env.REGISTRATION_ADMIN_EMAILS || '')
-      .split(',')
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    if (admins.length === 0) return false;
-    return admins.includes((user.email || '').toLowerCase());
+  /** 管理权限判定：数据库标记（首个用户自动授予）或 REGISTRATION_ADMIN_EMAILS 名单 */
+  isAdmin(user: { email: string; isSystemAdmin?: boolean }): boolean {
+    return isPlatformAdmin(user);
   }
 
   assertAdmin(user: { email: string }): void {

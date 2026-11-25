@@ -15,7 +15,7 @@
  * 因此这里返回的动态 import Promise 数组可直接展开进 AppModule.imports。
  */
 
-import { getPineEdition } from './common/config/edition';
+import { getEffectiveEdition } from './common/config/edition';
 
 /** 企业版模块路径列表（仅在 enterprise 构建下求值，社区版不引用） */
 const EE_MODULE_PATHS: string[] = [
@@ -34,8 +34,24 @@ const EE_MODULE_PATHS: string[] = [
   '@ee/okr/okr.module',
 ];
 
-/** 返回 AppModule 应导入的企业模块列表（社区版为空数组） */
+/**
+ * 从动态 import 的命名空间里取出 Nest 模块类。
+ *
+ * 2026-11-24 修复：overlay 里的 14 个 *.module.ts 全是具名导出
+ * （`export class LicenseModule {}`），没有一个 `export default`。原实现
+ * `m.default ?? m` 会退化成命名空间对象 → Nest 抛
+ * `TypeError: metatype is not a constructor`，企业版因此从未启动成功
+ * （Docker 构建同样受影响）。这里同时兼容 default / 具名 / 直接函数三种形态。
+ */
+function resolveModuleClass(ns: any): any {
+  if (typeof ns === 'function') return ns;
+  if (ns && typeof ns.default === 'function') return ns.default;
+  const values = Object.values(ns || {}).filter((v) => typeof v === 'function');
+  return values.find((v: any) => /Module$/.test(v.name)) ?? values[0] ?? ns;
+}
+
+/** 返回 AppModule 应导入的企业模块列表（未授权时为空数组，企业代码根本不加载） */
 export function getEnterpriseModules(): Array<Promise<any>> {
-  if (getPineEdition() !== 'enterprise') return [];
-  return EE_MODULE_PATHS.map((p) => import(/* @vite-ignore */ p).then((m: any) => m.default ?? m));
+  if (getEffectiveEdition() !== 'enterprise') return [];
+  return EE_MODULE_PATHS.map((p) => import(/* @vite-ignore */ p).then(resolveModuleClass));
 }
