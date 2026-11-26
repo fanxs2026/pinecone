@@ -71,7 +71,11 @@ const BUILD_DIR = path.join(ROOT, 'apps/backend/.ee-build');
 const STAGE_STAMP = hasFlag('--stamp')
   ? '.' + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
   : '';
-const STAGE = path.join(STAGE_ROOT, PKG_NAME + STAGE_STAMP);
+// --stage=<dir>：直接指定要操作的 stage 目录（配合 --check-deps 校验历史产物）
+const STAGE_OVERRIDE = getArg('stage', '');
+const STAGE = STAGE_OVERRIDE
+  ? path.resolve(ROOT, STAGE_OVERRIDE)
+  : path.join(STAGE_ROOT, PKG_NAME + STAGE_STAMP);
 
 const MB = (n) => (n / 1048576).toFixed(1) + ' MB';
 const log = (...a) => console.log('[pack]', ...a);
@@ -1079,6 +1083,79 @@ function patchFrontendUrls() {
   log('frontend: rewrote localhost URLs in', patched, 'files');
 }
 
+// ------------------------------------------------- 3.5 交付物依赖漂移检查
+
+/**
+ * 交付物里的关键依赖是否比本地安装的旧。
+ *
+ * 背景（2026-11-26）：绿色包的前端来自 .next/standalone，里面**打包着构建时**的
+ * 依赖版本。出现过的真实问题：源码把 next 升到 16.4.6、CI 也绿了，但没重打包，
+ * 交付物里仍是 16.3.8 —— 带着两个 critical RCE。这类问题源码和 CI 都看不出来，
+ * 只有打开包检查才发现。
+ *
+ * 只告警、不中断：确实需要回归旧版本时不该被卡死，但必须让人看见。
+ */
+const TRACKED_DEPS = ['next', 'react', 'react-dom'];
+
+function readVersion(baseDir, name) {
+  const p = path.join(baseDir, 'node_modules', name, 'package.json');
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8')).version || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 比较 x.y.z；遇到预发布标记（含非数字段）则放弃比较返回 0 */
+function cmpVersion(a, b) {
+  const pa = String(a).split('.');
+  const pb = String(b).split('.');
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = Number(pa[i] ?? 0);
+    const y = Number(pb[i] ?? 0);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+function reportShippedVersions() {
+  const shippedList = [];
+  const stale = [];
+
+  for (const name of TRACKED_DEPS) {
+    const shipped = readVersion(STAGE, name);
+    if (!shipped) continue;
+    shippedList.push(name + ' ' + shipped);
+
+    // 本地安装版本：优先前端包（依赖真正声明处），其次仓库根
+    const local =
+      readVersion(path.join(ROOT, 'apps/frontend'), name) || readVersion(ROOT, name);
+    if (local && cmpVersion(shipped, local) < 0) {
+      stale.push({ name, shipped, local });
+    }
+  }
+
+  log('shipped deps:', shippedList.length ? shippedList.join(' | ') : '(未找到)');
+  if (stale.length === 0) return;
+
+  const bar = '!'.repeat(70);
+  console.log('');
+  console.log(bar);
+  console.log('  WARNING: this package ships OLDER dependencies than the local install');
+  for (const s of stale) {
+    console.log('    - ' + s.name + ': shipped ' + s.shipped + ' < installed ' + s.local);
+  }
+  console.log('  .next/standalone carries the versions that existed at build time, so a');
+  console.log('  dependency upgrade does NOT reach the package until the frontend is');
+  console.log('  rebuilt. Rebuild it before packaging:');
+  console.log('    node scripts/pack-portable.js --edition=' + EDITION + ' --build-frontend');
+  console.log('  Otherwise the delivered package may contain known vulnerabilities.');
+  console.log(bar);
+  console.log('');
+}
+
 // ------------------------------------------------------------------- 4. zip
 
 function zipIt() {
@@ -1102,6 +1179,15 @@ function zipIt() {
 
 (function main() {
   log('version', VERSION, '| edition', EDITION, '| api', API_URL);
+
+  // --check-deps：只检查已存在的 stage 里关键依赖是否落后，不重新打包。
+  // 配合 --stage=<dir> 可校验历史产物。
+  if (hasFlag('--check-deps')) {
+    if (!fs.existsSync(STAGE)) fail('stage dir not found: ' + STAGE);
+    log('checking', path.relative(ROOT, STAGE));
+    reportShippedVersions();
+    return;
+  }
 
   // --post-readme：只把中文 README 写进已存在的 stage 并重新压缩。
   // 用于环境不允许删除/大规模重拷贝时的小步更新。
@@ -1209,6 +1295,9 @@ function zipIt() {
   log('copied files:', copied, '| skipped:', skipped, '| dangling symlinks:', brokenLinks);
   const stageSize = sizeOf(STAGE);
   log('stage size (uncompressed):', MB(stageSize));
+
+  // 交付物依赖漂移检查：包里的 next/react 若比本地安装的旧，醒目告警
+  reportShippedVersions();
 
   if (!SKIP_ZIP) {
     const out = zipIt();
