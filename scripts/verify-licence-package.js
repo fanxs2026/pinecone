@@ -10,7 +10,11 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const PKG = path.join(ROOT, 'dist/portable/pinecone-ee-portable-1.0.1-win-x64');
+// --pkg=<dir>：指定要验证的包目录（打包用 --stamp 时目录名带时间戳）
+const PKG_ARG = (process.argv.find((a) => a.startsWith('--pkg=')) || '').slice('--pkg='.length);
+const PKG = PKG_ARG
+  ? path.resolve(PKG_ARG)
+  : path.join(ROOT, 'dist/portable/pinecone-ee-portable-1.0.1-win-x64');
 const NODE = path.join(PKG, 'node', 'node.exe');
 
 function readEnvKey(file, key) {
