@@ -1233,7 +1233,12 @@ function zipIt() {
   ensureDir(STAGE);
 
   log('copying backend dist ...');
-  copyFiltered(distDir, path.join(STAGE, 'apps/backend/dist'), null);
+  // 交付包不需要构建期副产物：
+  //   .map   运行时不读，且 sources 字段暴露源码文件树
+  //   .d.ts  运行时不读，但会把每个模块的接口、字段名、枚举值完整列出来
+  // 两者合计约 6.7 MB，去掉后既能缩包，也少一份白送的结构说明。
+  const skipBuildArtifacts = (dst) => !dst.endsWith('.map') && !dst.endsWith('.d.ts');
+  copyFiltered(distDir, path.join(STAGE, 'apps/backend/dist'), skipBuildArtifacts);
   fs.copyFileSync(
     path.join(ROOT, 'apps/backend/package.json'),
     path.join(STAGE, 'apps/backend/package.json')
@@ -1257,10 +1262,12 @@ function zipIt() {
   // root, so server.js lands at <pkg>/apps/frontend/server.js with its traced
   // node_modules at <pkg>/node_modules. Next resolves .next relative to __dirname.
   log('copying frontend standalone (dir = <pkg>, same as docker /app) ...');
+  // 与后端同理：.map / .d.ts 运行时不读。Next 会在 .next/server 下产出
+  // 一批 server 端 sourcemap（实测 sources 为空、不含源码，纯属冗余），一并剔除。
   copyFiltered(
     path.join(ROOT, 'apps/frontend/.next/standalone'),
     STAGE,
-    null
+    (dst) => !dst.endsWith('.map') && !dst.endsWith('.d.ts')
   );
   copyTreeWithFilter(
     path.join(ROOT, 'apps/frontend/.next/static'),
