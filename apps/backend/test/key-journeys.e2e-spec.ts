@@ -281,4 +281,132 @@ describe('Key journeys (e2e)', () => {
     expect(test.status).toBe(200);
     expect(test.body.ok).toBe(false);
   });
+
+  /**
+   * E8 退出登录（2026-11-26 修复的回归用例）
+   *
+   * 修复前的缺陷：CSRF 同站校验在 clearCookie 之前，跨站 Origin 直接 403，
+   * 两个 cookie 一个都没清；前端已清本地态并跳 /login，又被 proxy 按残留 cookie
+   * 弹回首页 → 用户卡在「未登录但进不了登录页」。
+   *
+   * 现在的契约：
+   *   · 任何来源都必须清 cookie（不返回 403）
+   *   · 只有同站才撤销服务端 refresh token（跨站仅本地清理，返回 "Logged out locally"）
+   */
+  it('E8 logout：跨站仍清 cookie 不 403 / 同站撤销会话', async () => {
+    const login = await request(server)
+      .post('/api/auth/login')
+      .set('Origin', 'http://localhost:6173')
+      .send({ email, password });
+    expect(login.status).toBe(201);
+    const rawCookies = (login.headers['set-cookie'] || []) as unknown as string[];
+    expect(rawCookies.length).toBeGreaterThan(0);
+    const cookieHeader = rawCookies.map((c) => c.split(';')[0]).join('; ');
+
+    // ① 跨站来源：不得 403，且必须下发两个清除 cookie
+    const cross = await request(server)
+      .post('/api/auth/logout')
+      .set('Origin', 'https://evil.example.com')
+      .set('Cookie', cookieHeader);
+    expect([200, 201]).toContain(cross.status);
+    expect(cross.body.message).toBe('Logged out locally');
+    const cleared = (cross.headers['set-cookie'] || []) as unknown as string[];
+    expect(cleared.some((c) => c.startsWith('pinecone-access=;'))).toBe(true);
+    expect(cleared.some((c) => c.startsWith('pinecone-refresh=;'))).toBe(true);
+
+    // ② 同站：正常撤销服务端会话
+    // 注意：同一性判定比的是 Origin 的 hostname 与请求 Host 的 hostname（忽略端口）。
+    // supertest 默认 Host 是 127.0.0.1:<随机端口>，所以这里 Origin 也必须用 127.0.0.1，
+    // 否则会被判成跨站（真实浏览器里两者天然一致）。
+    const same = await request(server)
+      .post('/api/auth/logout')
+      .set('Origin', 'http://127.0.0.1:3000')
+      .set('Cookie', cookieHeader);
+    expect([200, 201]).toContain(same.status);
+    expect(same.body.message).toBe('Logged out successfully');
+
+    // ③ 撤销后 refresh 必须失败（旧 cookie 不能再换新 access token）
+    const refresh = await request(server)
+      .post('/api/auth/refresh')
+      .set('Origin', 'http://127.0.0.1:3000')
+      .set('Cookie', cookieHeader);
+    expect(refresh.status).toBe(401);
+  });
+
+  /**
+   * E9 平台管理面权限（2026-11-26 审计修复的回归）
+   *
+   * 缺陷：GET /api/telemetry/instances 与 /summary 只挂 JwtAuthGuard，
+   * 任何登录用户都能拉取全部客户实例的版本与活跃度（平台级信息泄露）。
+   * 同时旧 SystemAdminGuard 只认 users.isSystemAdmin，漏掉 REGISTRATION_ADMIN_EMAILS
+   * 名单路径 —— 运维按文档配名单反而 403。
+   */
+  it('E9 平台管理面：实例列表仅平台管理员可见（普通用户 403 / 名单内 200）', async () => {
+    const plain = await request(server).get('/api/telemetry/instances').set(auth());
+    expect(plain.status).toBe(403);
+
+    const plainSummary = await request(server).get('/api/telemetry/summary').set(auth());
+    expect(plainSummary.status).toBe(403);
+
+    const adminEmail = 'e2e-admin@test.local';
+    let token: string;
+    const reg = await request(server)
+      .post('/api/auth/register')
+      .send({ email: adminEmail, password, name: 'E2E Admin' });
+    if (reg.status === 201) {
+      token = reg.body.accessToken;
+    } else {
+      const lg = await request(server).post('/api/auth/login').send({ email: adminEmail, password });
+      expect(lg.status).toBe(201);
+      token = lg.body.accessToken;
+    }
+
+    const adminAuth = { Authorization: 'Bearer ' + token };
+    const ok = await request(server).get('/api/telemetry/instances').set(adminAuth);
+    expect(ok.status).toBe(200);
+    expect(Array.isArray(ok.body.items)).toBe(true);
+
+    const sum = await request(server).get('/api/telemetry/summary').set(adminAuth);
+    expect(sum.status).toBe(200);
+    expect(typeof sum.body.totalInstances).toBe('number');
+  });
+
+  /**
+   * E10 交付时限（dueDate）写入（2026-11-26 线上故障回归）
+   *
+   * DTO 的 dueDate 是 `YYYY-MM-DD`（前端 date input 原生值），而 Prisma 的 DateTime
+   * 只接受完整 ISO-8601 —— 直接透传会报
+   * `Invalid value for argument 'dueDate': premature end of input`，表现为创建 500。
+   * 三个实体（support / feature / story）共用 common/utils/date-only 的 toDateOnly。
+   */
+  it('E10 dueDate：纯日期可创建 / 可更新 / 可清空', async () => {
+    const created = await request(server)
+      .post(`/api/workspaces/${wsId}/supports`)
+      .set(auth())
+      .send({ title: '带交付时限的支持请求', dueDate: '2026-12-01' });
+    expect(created.status).toBe(201);
+    expect(String(created.body.dueDate).slice(0, 10)).toBe('2026-12-01');
+
+    const patched = await request(server)
+      .patch(`/api/workspaces/${wsId}/supports/${created.body.id}`)
+      .set(auth())
+      .send({ dueDate: '2027-01-15' });
+    expect(patched.status).toBe(200);
+    expect(String(patched.body.dueDate).slice(0, 10)).toBe('2027-01-15');
+
+    const cleared = await request(server)
+      .patch(`/api/workspaces/${wsId}/supports/${created.body.id}`)
+      .set(auth())
+      .send({ dueDate: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.dueDate).toBeNull();
+
+    // feature 走同一工具，抽一条确认没有遗漏
+    const feature = await request(server)
+      .post(`/api/workspaces/${wsId}/features`)
+      .set(auth())
+      .send({ title: '带交付时限的特性', dueDate: '2026-12-31' });
+    expect(feature.status).toBe(201);
+    expect(String(feature.body.dueDate).slice(0, 10)).toBe('2026-12-31');
+  });
 });

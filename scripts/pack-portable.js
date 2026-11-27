@@ -389,24 +389,106 @@ function buildFrontend() {
     log('frontend build: skipped (pass --build-frontend to rebuild with runtime URLs)');
     return;
   }
-  // Call next directly instead of through pnpm: pnpm's deps-status check shells
-  // out to install on mismatch, which fails in restricted/sandboxed shells.
-  const nextBin = path.join(ROOT, 'apps/frontend/node_modules/next/dist/bin/next');
-  if (!fs.existsSync(nextBin)) fail('next binary not found: ' + nextBin);
+  // 与 scripts/verify.bat 共用同一份构建实现，避免「两处构建、两种产物」。
+  // 该脚本负责：Node 层把 NEXT_PUBLIC_* 置为空字符串（压住 .env.local）、
+  // 构建后自检产物里没有硬编码 localhost。
   log('frontend build: rebuilding with empty NEXT_PUBLIC_* ...');
-  execFileSync(process.execPath, [nextBin, 'build'], {
-    cwd: path.join(ROOT, 'apps/frontend'),
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-frontend-pack.js')], {
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      NODE_OPTIONS: '',
-      // Empty string is inlined, so runtime resolution wins.
-      NEXT_PUBLIC_API_URL: '',
-      NEXT_PUBLIC_WS_URL: '',
-      NEXT_PUBLIC_KB_COLLAB_URL: '',
-    },
+    env: { ...process.env, NODE_OPTIONS: '' },
   });
   log('frontend build: done');
+}
+
+/** 递归取目录下最新 mtime（跳过构建产物与依赖目录） */
+function newestMtime(dir, extraIgnore) {
+  const skip = new Set(['node_modules', '.next', 'dist', '.turbo', '.ee-build', ...(extraIgnore || [])]);
+  let newest = 0;
+  const walk = (d) => {
+    let ents;
+    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (skip.has(e.name)) continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) {
+        try {
+          const t = fs.statSync(p).mtimeMs;
+          if (t > newest) newest = t;
+        } catch { /* ignore */ }
+      }
+    }
+  };
+  walk(dir);
+  return newest;
+}
+
+/**
+ * 产物新鲜度门禁。
+ *
+ * 2026-11-26 事故：源码已修、dist 却是旧的，包打出来装上去仍然报错。
+ * 「代码改对了」不等于「交付物是新代码」，这里用 mtime 把两者钉死：
+ *   · prisma/schema.prisma 改过但没 generate  → 拦
+ *   · apps/backend/src 改过但没 nest build     → 拦
+ *   · apps/frontend/src 改过但没 next build    → 拦
+ * 需要刻意打过期包时用 --allow-stale。
+ */
+function assertFresh(distDir) {
+  if (hasFlag('--allow-stale')) {
+    log('freshness check: SKIPPED (--allow-stale)');
+    return;
+  }
+
+  const schemaMtime = fs.statSync(path.join(ROOT, 'apps/backend/prisma/schema.prisma')).mtimeMs;
+  const generatedMtime = newestMtime(path.join(ROOT, 'apps/backend/src/generated'));
+  if (generatedMtime < schemaMtime) {
+    fail(
+      'Prisma client is stale: src/generated is older than prisma/schema.prisma.\n' +
+        '  Run: pnpm --filter backend exec prisma generate',
+    );
+  }
+
+  const beSrcMtime = newestMtime(path.join(ROOT, 'apps/backend/src'), ['generated']);
+  const mainJs = path.join(distDir, 'main.js');
+  const mainMtime = fs.statSync(mainJs).mtimeMs;
+  if (mainMtime < beSrcMtime) {
+    fail(
+      'Backend build is stale: ' + path.relative(ROOT, mainJs) + ' is older than apps/backend/src.\n' +
+        '  Run: pnpm --filter backend build  (EE: rebuild the enterprise dist, do NOT pass --reuse-ee-build)',
+    );
+  }
+
+  // EE：企业模块来自私有 overlay，不在 apps/backend/src 下，必须单独比对，
+  // 否则 --reuse-ee-build 会把旧的企业代码打进包（本次事故的同一类问题）。
+  if (EDITION === 'ee') {
+    const overlayBe = path.join(OVERLAY, 'backend');
+    if (fs.existsSync(overlayBe)) {
+      const overlayMtime = newestMtime(overlayBe);
+      if (mainMtime < overlayMtime) {
+        fail(
+          'EE overlay is stale vs build: ' + path.relative(ROOT, mainJs) + ' is older than ' + overlayBe + '.\n' +
+            '  Rebuild the enterprise dist (do NOT pass --reuse-ee-build).',
+        );
+      }
+    }
+  }
+
+  const feSrcMtime = newestMtime(path.join(ROOT, 'apps/frontend/src'));
+  const feBuildFile = [
+    'apps/frontend/.next/BUILD_ID',
+    'apps/frontend/.next/standalone/apps/frontend/server.js',
+  ]
+    .map((r) => path.join(ROOT, r))
+    .find((p) => fs.existsSync(p));
+  if (!feBuildFile) fail('Frontend build output missing. Run: node scripts/pack-portable.js --build-frontend');
+  if (fs.statSync(feBuildFile).mtimeMs < feSrcMtime) {
+    fail(
+      'Frontend build is stale: ' + path.relative(ROOT, feBuildFile) + ' is older than apps/frontend/src.\n' +
+        '  Re-run the packer with --build-frontend',
+    );
+  }
+
+  log('freshness check: ok (backend dist + frontend .next are newer than sources)');
 }
 
 function checkInputs(distDir) {
@@ -428,6 +510,18 @@ function checkInputs(distDir) {
     if (!fs.existsSync(path.join(ROOT, rel))) {
       fail('missing build artifact: ' + rel + ' (run the frontend build first)');
     }
+  }
+  assertFresh(distDir);
+
+  // 结构门禁：db/schema.sql 必须覆盖 prisma/schema.prisma，否则装出来的库缺列/缺表
+  try {
+    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'verify-portable-schema.js')], {
+      cwd: ROOT,
+      stdio: 'inherit',
+      env: { ...process.env, NODE_OPTIONS: '' },
+    });
+  } catch {
+    fail('portable schema check failed — db/schema.sql is out of sync with prisma/schema.prisma');
   }
 }
 
@@ -996,6 +1090,22 @@ function writeLaunchers() {
     path.join(__dirname, 'portable', 'db', 'schema.sql'),
     path.join(STAGE, 'db', 'schema.sql')
   );
+
+  // 存量库增量补丁（幂等 DDL）。schema.sql 只对全新库生效，已经跑过 setup-db 的
+  // 实例要靠 db/patches + bin/patch-db.js 补结构，否则升级后运行期报 P2022。
+  const patchSrcDir = path.join(__dirname, 'portable', 'db', 'patches');
+  if (fs.existsSync(patchSrcDir)) {
+    const patchStageDir = path.join(STAGE, 'db', 'patches');
+    ensureDir(patchStageDir);
+    for (const f of fs.readdirSync(patchSrcDir)) {
+      if (!f.toLowerCase().endsWith('.sql')) continue;
+      fs.copyFileSync(path.join(patchSrcDir, f), path.join(patchStageDir, f));
+    }
+  }
+  fs.copyFileSync(
+    path.join(__dirname, 'portable', 'patch-db.js'),
+    path.join(STAGE, 'bin', 'patch-db.js')
+  );
 }
 
 /**
@@ -1158,6 +1268,35 @@ function reportShippedVersions() {
 
 // ------------------------------------------------------------------- 4. zip
 
+/**
+ * 版本注入：包里每个可读的版本位都必须是发布版本。
+ *
+ * 2026-11-26 审计发现：zip 名和 README 写的是 1.0.2，但 stage 里的
+ * apps/backend/package.json 仍是仓库的 0.1.0 —— 客户解压自查或任何读
+ * package.json.version 的地方都会看到错版本。
+ */
+function stampVersion() {
+  const targets = [
+    path.join(STAGE, 'apps', 'backend', 'package.json'),
+    path.join(STAGE, 'apps', 'frontend', 'package.json'),
+  ];
+  for (const p of targets) {
+    if (!fs.existsSync(p)) continue;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+      pkg.version = VERSION;
+      fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+    } catch (e) {
+      log('WARN version stamp skipped: ' + path.relative(STAGE, p) + ' (' + e.message + ')');
+    }
+  }
+  fs.writeFileSync(
+    path.join(STAGE, 'VERSION.txt'),
+    'version=' + VERSION + '\npackage=' + PKG_NAME + '\nbuilt=' + new Date().toISOString() + '\n',
+  );
+  log('version stamped:', VERSION);
+}
+
 function zipIt() {
   const out = path.join(STAGE_ROOT, PKG_NAME + '.zip');
   const py = ['python', 'python3', 'py'].find((c) => {
@@ -1298,6 +1437,9 @@ function zipIt() {
   writeEnv();
   writeLaunchers();
   patchFrontendUrls();
+
+  // 版本注入：保证包内 package.json / VERSION.txt 与 zip 名、README 一致
+  stampVersion();
 
   log('copied files:', copied, '| skipped:', skipped, '| dangling symlinks:', brokenLinks);
   const stageSize = sizeOf(STAGE);

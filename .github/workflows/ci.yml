@@ -127,6 +127,20 @@ jobs:
           JWT_ACCESS_SECRET: ${{ steps.jwt-secrets.outputs.JWT_ACCESS_SECRET }}
           JWT_REFRESH_SECRET: ${{ steps.jwt-secrets.outputs.JWT_REFRESH_SECRET }}
 
+      # 2026-11-26 门禁：迁移建出来的库必须与 schema.prisma 完全一致。
+      # 缺列 / 列类型不符 / 缺外键在部署后都表现为 500 或孤儿数据，这里提前拦。
+      - name: Verify migrated DB matches Prisma schema
+        run: node scripts/verify-db-schema.js
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      # 2026-11-26 门禁：便携版（Windows 包）不走 migrate deploy，而是执行
+      # scripts/portable/db/schema.sql 快照。快照落后于迁移 → 部署库缺列 →
+      # 运行期 P2022「column does not exist」→ 前端只显示 internal server error。
+      # 实测事故：supports.due_date 缺失，新建支持请求 500。
+      - name: Portable schema snapshot check
+        run: node scripts/verify-portable-schema.js
+
       - name: Typecheck (backend)
         run: pnpm --filter backend typecheck
 

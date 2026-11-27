@@ -146,3 +146,43 @@ Pinecone/
 | `/api/workspaces/:wsId/workflows` | Workflows | Status workflow engine |
 | `/api/workspaces/:wsId/time-entries` | Time Tracking | Time logging per story |
 | `/ws` | Realtime | Socket.IO WebSocket for live updates |
+
+## 结构一致性校验（三条链路必须收敛）
+
+同一个产品有三条建库/发布路径，任何一条偏离 `apps/backend/prisma/schema.prisma`，运行期都会
+表现成 `P2022 column ... does not exist` → 前端统一提示 internal server error，且报错点离
+「建库」很远（2026-11-26 实测：便携版缺 `supports.due_date`，新建支持请求 500）。
+
+| 链路 | 建库方式 | 校验命令 |
+|---|---|---|
+| 开发环境 | 本地 PG，手工补丁 | `node scripts/verify-db-schema.js` |
+| Docker / CI | `prisma migrate deploy` | `node scripts/verify-migrate-fresh-db.js` |
+| Windows 便携包 | `db/schema.sql` 快照 + 增量区 | `node scripts/verify-portable-fresh-db.js` |
+
+前三者最终都会落到同一个比对器 `verify-db-schema.js`（表/列/类型/可空/索引/唯一/外键/枚举）。
+文件级还有一道更快的门禁 `verify-portable-schema.js`，已接入 CI 与 `scripts/verify.bat`。
+
+### 已部署实例怎么升级（不丢数据）
+
+`db/schema.sql` 只对「全新库」生效。已经跑过 `setup-db.bat` 的实例，靠增量补丁追平：
+
+```bash
+node bin\patch-db.js --check    # 只探测缺什么，不改库
+node bin\patch-db.js            # 按文件名顺序执行 db/patches/*.sql
+# 然后重启后端服务
+```
+
+在仓库里可以直接用：`node scripts/apply-db-patches.js`（可加 `--url=` 指向任意库）。
+
+### 打便携包的前置门禁
+
+`pack-portable.js` 现在会在拷贝前做三件事，任何一条不过直接失败：
+
+1. **产物新鲜度**：`dist/main.js` 必须晚于 `apps/backend/src`，`.next/BUILD_ID` 必须晚于
+   `apps/frontend/src`，`src/generated` 必须晚于 `schema.prisma`；EE 版还会额外比对
+   `--overlay` 里的企业模块。刻意打过期包时加 `--allow-stale`。
+2. **结构一致性**：`verify-portable-schema.js`，防止 schema.sql 落后于迁移。
+3. 前端产物必须用 `--build-frontend` 构建（清空 `NEXT_PUBLIC_*`，地址在运行期按访问域名推导）。
+
+> `verify.bat` 的 frontend build 也已改为清空 `NEXT_PUBLIC_*`；此前它把
+> `http://localhost:3000/api` 硬编码进产物，再用这份产物打包就会让客户机请求自己的 localhost。

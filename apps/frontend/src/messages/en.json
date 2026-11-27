@@ -1535,7 +1535,21 @@
     "lastSeen": "Last seen",
     "enterpriseOnlyTitle": "Enterprise feature",
     "enterpriseOnlyDesc": "License management is available in Pinecone Enterprise. Contact us to learn about upgrade options.",
-    "learnMore": "Learn about Enterprise"
+    "learnMore": "Learn about Enterprise",
+    "colCustomer": "Customer",
+    "colKey": "License key",
+    "colEdition": "Edition",
+    "colStatus": "Status",
+    "colIssued": "Issued",
+    "colActions": "Actions",
+    "notes": "Notes",
+    "cancel": "Cancel",
+    "close": "Close",
+    "revokeConfirm": "Revoke this license? The client loses enterprise features immediately.",
+    "renewDays": "Renew days",
+    "never": "Never",
+    "page": "Page {page} / {total}",
+    "refresh": "Refresh"
   },
   "instances": {
     "title": "Active instances",
@@ -1554,7 +1568,16 @@
     "forbiddenDesc": "Platform admins only",
     "enterpriseOnlyTitle": "Enterprise feature",
     "enterpriseOnlyDesc": "Instance management is available in Pinecone Enterprise. Contact us to learn about upgrade options.",
-    "learnMore": "Learn about Enterprise"
+    "learnMore": "Learn about Enterprise",
+    "colInstance": "Instance ID",
+    "colVersion": "Version",
+    "colEdition": "Edition",
+    "colLastSeen": "Last seen",
+    "colChecks": "Checks",
+    "firstSeen": "First seen",
+    "colStatus": "Status",
+    "refresh": "Refresh",
+    "page": "Page {page} / {total}"
   },
   "stories": {
     "hoursEstimated": "Estimated",

@@ -15,6 +15,7 @@ import { EventsService } from '../events/events.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import type { EntityFilter } from '../custom-fields/entity-filter';
 import { publishEntityCreated, publishStatusChanged } from '../../common/entity-events';
+import { toDateOnly } from '../../common/utils/date-only';
 
 @Injectable()
 export class FeaturesService {
@@ -184,7 +185,8 @@ export class FeaturesService {
           createdById: userId,
           effortEstimate: dto.effortEstimate || null,
           effortUnit: dto.effortUnit || 'HOURS',
-          dueDate: dto.dueDate ?? null,
+          // DTO 是 YYYY-MM-DD，Prisma 的 DateTime 只收完整 ISO → 必须归一为 Date
+          dueDate: toDateOnly(dto.dueDate),
           ...(customFields !== undefined
             ? { customFields: customFields as Prisma.InputJsonValue }
             : {}),
@@ -265,6 +267,10 @@ export class FeaturesService {
     }
 
     // Handle date and empty-string-to-null transforms
+    // dueDate 是 date-only 字符串，写库前归一为 Date（否则 Prisma 报 ISO-8601 解析失败）
+    if (updateData.dueDate !== undefined) {
+      updateData.dueDate = toDateOnly(dto.dueDate);
+    }
     if (typeof updateData.effortEstimate === 'string' && updateData.effortEstimate === '') {
       delete updateData.effortEstimate;
     }

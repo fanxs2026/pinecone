@@ -3,7 +3,15 @@ import type { NextRequest } from 'next/server';
 import { routing } from './i18n/routing';
 
 const publicPaths = ['/login', '/register'];
-const protectedPaths = ['/', '/ideas', '/features', '/releases', '/stories', '/supports', '/time-tracking', '/kb', '/themes', '/feedback-portal', '/reports', '/dashboards'];
+// 受保护路由。2026-11-26 审计补齐：原先漏了 /settings /okr /imports /trash
+// /test-cases /test-plans —— 未登录能直接渲染这些页面骨架（数据由后端 401 兜住，
+// 无泄露，但属于守卫不完整）。这里按 app/(dashboard) 的实际目录对齐。
+const protectedPaths = [
+  '/', '/ideas', '/features', '/releases', '/stories', '/supports',
+  '/time-tracking', '/kb', '/themes', '/feedback-portal', '/reports', '/dashboards',
+  '/settings', '/okr', '/imports', '/trash', '/test-cases', '/test-plans',
+  '/admin',
+];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -12,9 +20,13 @@ export default function proxy(request: NextRequest) {
   const authCookie = request.cookies.get('pinecone-access');
 
   if (publicPaths.some((p) => pathname.startsWith(p))) {
-    if (authCookie) {
-      return NextResponse.redirect(new URL('/', request.url));
-    }
+    // 2026-11-26 修复（退出登录后被弹回首页、进不了登录页）：
+    // 这里原本「有 pinecone-access 就 302 到 /」。一旦 cookie 因任何原因没被清掉
+    // （logout 请求被 CSRF 校验拒绝 / 网络失败 / 反代改写 Host），用户就会陷入
+    // 「前端已清登录态 → 去 /login → 又被弹回 / → 首页显示创建工作区」的死锁，
+    // 且没有任何入口能重新登录。
+    // 登录页本身不需要这层保护：已登录用户误访问 /login 只会看到表单，无副作用。
+    // 因此不再自动重定向，把「要不要进应用」交给页面自身判断。
     const res = NextResponse.next();
     if (!request.cookies.get('NEXT_LOCALE')) {
       res.cookies.set('NEXT_LOCALE', routing.defaultLocale, { path: '/' });

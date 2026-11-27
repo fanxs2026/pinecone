@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { CreateTodoItemDto, UpdateTodoItemDto } from './dto/todo-item.dto';
+import { toDateOnly } from '../../common/utils/date-only';
 
 @Injectable()
 export class TodoItemsService {
@@ -46,7 +47,7 @@ export class TodoItemsService {
         title: dto.title,
         description: dto.description,
         assigneeId: dto.assigneeId,
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        dueDate: toDateOnly(dto.dueDate),
         createdById: userId,
       },
       include: {
@@ -92,7 +93,7 @@ export class TodoItemsService {
       data.assigneeId = dto.assigneeId;
       if (dto.assigneeId !== todo.assigneeId) reassignedTo = dto.assigneeId;
     }
-    if (dto.dueDate !== undefined) data.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+    if (dto.dueDate !== undefined) data.dueDate = toDateOnly(dto.dueDate);
 
     const updated = await this.prisma.todoItem.update({
       where: { id: todoId },

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/stores/auth-store';
+import { useWorkspaceStore } from '@/stores/workspace-store';
 import { useEditionStore } from '@/stores/edition-store';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { cn } from '@/lib/utils';
@@ -127,7 +128,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // 网络失败也继续清前端（后端 cookie 会随过期失效）
     }
     clearAuth();
-    window.location.href = '/login';
+    // 同时清掉工作区选择：否则下次登录仍会沿用上一个账号选过的工作区，
+    // 若该账号无权访问就会在首页刷一串 401/403，表现为「选了工作区还是空的」
+    useWorkspaceStore.setState({ selectedWorkspaceId: null });
+    // replace 而非 href：避免用户点浏览器「后退」又回到已登出的 dashboard
+    window.location.replace('/login');
   };
 
   const initials = user?.name

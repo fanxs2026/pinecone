@@ -14,6 +14,7 @@ import { EventsService } from '../events/events.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import type { EntityFilter } from '../custom-fields/entity-filter';
 import { publishEntityCreated, publishStatusChanged } from '../../common/entity-events';
+import { toDateOnly } from '../../common/utils/date-only';
 
 @Injectable()
 export class SupportsService {
@@ -163,7 +164,8 @@ export class SupportsService {
           assigneeName,
           releaseId: dto.releaseId || null,
           createdById: userId,
-          dueDate: dto.dueDate ?? null,
+          // DTO 是 YYYY-MM-DD，Prisma 的 DateTime 只收完整 ISO → 必须归一为 Date
+          dueDate: toDateOnly(dto.dueDate),
           ...(customFields !== undefined
             ? { customFields: customFields as Prisma.InputJsonValue }
             : {}),
@@ -236,6 +238,8 @@ export class SupportsService {
     // client-supplied value to prevent display spoofing.
     const updateData: Record<string, unknown> = { ...dto };
     delete updateData.assigneeName;
+    // 同上：dueDate 是 date-only 字符串，写库前归一为 Date（否则 Prisma 报 ISO-8601 解析失败）
+    if (dto.dueDate !== undefined) updateData.dueDate = toDateOnly(dto.dueDate);
 
     // 自定义属性：与库中现值合并后再校验必填，避免局部更新被必填规则误伤
     if (dto.customFields !== undefined) {

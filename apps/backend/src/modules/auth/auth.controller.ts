@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Req, Res, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, Res, ForbiddenException, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
@@ -114,6 +114,8 @@ function readRefreshToken(req: any, dtoToken?: string): string {
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private authService: AuthService) {}
 
   // P3-5 修复：公开注册模式（供注册页提示是否需要邀请码/白名单；不敏感）
@@ -205,10 +207,26 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout and invalidate refresh token (works even with expired access token)' })
   async logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    // CSRF 纵深防护：跨站请求不得触发注销（仅同站/无来源标识请求放行）
+    // 2026-11-26 修复（退出登录后被弹回首页、无法回到登录页）：
+    // 清 cookie 必须无条件先执行。原实现把 clearCookie 放在 CSRF 校验之后，
+    // 一旦 isSameSiteRequest 判为跨站（例如反代改写了 Host、或前端用 IP 打开而
+    // API 基址是 localhost），请求直接 403 → cookie 从没被清掉；前端却已清本地态
+    // 并跳 /login，又因 cookie 仍在被弹回首页 → 死锁。
+    // 清 cookie 本身没有副作用（最坏情况是用户被登出，DoS 级低危），因此不设前置条件。
+    clearRefreshCookie(res);
+    clearAccessCookie(res);
+
     if (!isSameSiteRequest(req)) {
-      throw new ForbiddenException('Cross-site logout is not allowed');
+      // 跨站请求：不撤销服务端会话（保留 CSRF 防护意图），只做本机 cookie 清理
+      // 头字段来自请求方，先剥掉换行，避免日志注入（伪造多行日志）
+      const safeOrigin = String(req?.headers?.origin ?? '-').replace(/[\r\n]/g, '');
+      const safeHost = String(req?.hostname ?? '-').replace(/[\r\n]/g, '');
+      this.logger.warn(
+        `logout rejected by same-site check (origin=${safeOrigin} host=${safeHost}); cookies cleared locally only`,
+      );
+      return { message: 'Logged out locally' };
     }
+
     // 优先用 refresh cookie 定位会话；access token 有效时也可用 userId
     const refreshToken = readRefreshToken(req);
     if (refreshToken) {
@@ -216,8 +234,6 @@ export class AuthController {
     } else if (req.user?.id) {
       await this.authService.logout(req.user.id);
     }
-    clearRefreshCookie(res);
-    clearAccessCookie(res);
     return { message: 'Logged out successfully' };
   }
 }

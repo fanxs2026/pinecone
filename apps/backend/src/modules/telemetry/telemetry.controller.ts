@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SystemAdminGuard } from '../../common/guards/system-admin.guard';
 import { TelemetryService } from './telemetry.service';
 
 @ApiTags('Telemetry')
@@ -28,10 +29,10 @@ export class TelemetryController {
     return this.telemetryService.checkUpdate({ instanceId, version, edition });
   }
 
-  /** 活跃实例列表（管理端） */
+  /** 活跃实例列表（平台管理端：仅系统管理员，含全部客户实例标识） */
   @Get('instances')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'List active instances (admin)' })
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @ApiOperation({ summary: 'List active instances (system admin)' })
   listInstances(@Query('page') page?: string, @Query('pageSize') pageSize?: string) {
     return this.telemetryService.listInstances({
       page: Math.max(1, Number(page) || 1),
@@ -39,10 +40,10 @@ export class TelemetryController {
     });
   }
 
-  /** 聚合视图（管理端，需登录） */
+  /** 聚合视图（平台管理端：仅系统管理员） */
   @Get('summary')
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Aggregated telemetry summary (admin)' })
+  @UseGuards(JwtAuthGuard, SystemAdminGuard)
+  @ApiOperation({ summary: 'Aggregated telemetry summary (system admin)' })
   summary() {
     return this.telemetryService.summary();
   }

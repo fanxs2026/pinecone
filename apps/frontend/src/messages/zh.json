@@ -1535,7 +1535,21 @@
     "lastSeen": "最后活跃",
     "enterpriseOnlyTitle": "企业版功能",
     "enterpriseOnlyDesc": "License 管理仅在 Pinecone 企业版提供。联系我们了解升级方案。",
-    "learnMore": "了解企业版"
+    "learnMore": "了解企业版",
+    "colCustomer": "客户",
+    "colKey": "License Key",
+    "colEdition": "版本类型",
+    "colStatus": "状态",
+    "colIssued": "签发时间",
+    "colActions": "操作",
+    "notes": "备注",
+    "cancel": "取消",
+    "close": "关闭",
+    "revokeConfirm": "确认吊销该 License？客户端将立即失去企业功能。",
+    "renewDays": "续期天数",
+    "never": "从未",
+    "page": "第 {page} / {total} 页",
+    "refresh": "刷新"
   },
   "instances": {
     "title": "活跃实例",
@@ -1554,7 +1568,16 @@
     "forbiddenDesc": "仅平台管理员可查看",
     "enterpriseOnlyTitle": "企业版功能",
     "enterpriseOnlyDesc": "实例管理仅在 Pinecone 企业版提供。联系我们了解升级方案。",
-    "learnMore": "了解企业版"
+    "learnMore": "了解企业版",
+    "colInstance": "实例 ID",
+    "colVersion": "版本",
+    "colEdition": "类型",
+    "colLastSeen": "最后活跃",
+    "colChecks": "检查次数",
+    "firstSeen": "首次上报",
+    "colStatus": "状态",
+    "refresh": "刷新",
+    "page": "第 {page} / {total} 页"
   },
   "stories": {
     "hoursEstimated": "预计",
