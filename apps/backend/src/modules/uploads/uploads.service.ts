@@ -3,26 +3,28 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { unlink } from 'node:fs/promises';
 import { createReadStream, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
-import { assertFileContentMatchesMime } from '../../common/utils/file-magic';
-
-// Keep in sync with UploadsController.ALLOWED_MIME_TYPES (defense-in-depth)
-// P1-①：移除纯压缩包类型（UI 仅支持图片；压缩包无解压扫描能力，放行=存储型恶意文件风险）
-const ALLOWED_MIME_TYPES = new Set<string>([
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/plain', 'text/csv', 'text/markdown',
-]);
+import { assertFileContentMatchesMime, isAllowedUploadMime } from '../../common/utils/file-magic';
 
 /** 魔数校验需读取的头部字节数（覆盖 JPEG/PNG/GIF/WEBP/PDF/ZIP 全部魔数签名） */
 const MAGIC_HEADER_BYTES = 12;
 
 type WorkspaceRole = 'ADMIN' | 'MEMBER' | 'VIEWER';
+
+/**
+ * 中文文件名乱码修复（2026-11-27）。
+ *
+ * busboy/multer 按 latin1 解析 multipart 的 filename 参数，UTF-8 的中文会被
+ * 拆成多个 latin1 字符并原样入库：「6岁.png」变成「6å².png」。
+ * 这里做 latin1 → utf8 回转：
+ *  - 纯 ASCII 直接返回（绝大多数情况）
+ *  - 回转结果含 U+FFFD 说明原本就是合法字符（如 café），保持原样
+ */
+export function decodeUploadFileName(name: string): string {
+  if (!name) return name;
+  if (!/[\u0080-\u00FF]/.test(name)) return name;
+  const decoded = Buffer.from(name, 'latin1').toString('utf8');
+  return decoded.includes('\uFFFD') ? name : decoded;
+}
 
 @Injectable()
 export class UploadsService {
@@ -36,7 +38,7 @@ export class UploadsService {
     file: { originalname: string; size: number; mimetype: string; path: string },
     category: 'FILE' | 'SCREENSHOT' = 'FILE',
   ) {
-    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    if (!isAllowedUploadMime(file.mimetype)) {
       throw new BadRequestException(`File type "${file.mimetype}" is not allowed`);
     }
     // P1-①：文件内容魔数校验（防 MIME 伪造上传恶意文件）——双层防御的第二层
@@ -46,7 +48,7 @@ export class UploadsService {
         workspaceId,
         entityType,
         entityId,
-        fileName: file.originalname,
+        fileName: decodeUploadFileName(file.originalname),
         fileSize: file.size,
         mimeType: file.mimetype,
         storagePath: file.path,

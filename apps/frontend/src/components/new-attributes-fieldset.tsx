@@ -1,5 +1,6 @@
 'use client';
 
+import DateInput from '@/components/date-input';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -55,12 +56,7 @@ export function NewAttributesFieldset({
       {withDueDate && (
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">{td('label')}</span>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => onDueDateChange(e.target.value)}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-          />
+          <DateInput value={dueDate} onChange={(v) => onDueDateChange(v)} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" />
         </div>
       )}
 

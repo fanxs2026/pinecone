@@ -25,6 +25,7 @@ export class TimeTrackingController {
   @ApiQuery({ name: 'userId', required: false })
   @ApiQuery({ name: 'entityType', required: false })
   @ApiQuery({ name: 'entityId', required: false })
+  @ApiQuery({ name: 'releaseId', required: false, description: 'Filter by release (story / entity release)' })
   @ApiQuery({ name: 'from', required: false, description: 'Start date (ISO)' })
   @ApiQuery({ name: 'to', required: false, description: 'End date (ISO)' })
   findAll(
@@ -33,10 +34,11 @@ export class TimeTrackingController {
     @Query('userId') userId?: string,
     @Query('entityType') entityType?: string,
     @Query('entityId') entityId?: string,
+    @Query('releaseId') releaseId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.timeTrackingService.findAll(wsId, { storyId, userId, entityType, entityId, from, to });
+    return this.timeTrackingService.findAll(wsId, { storyId, userId, entityType, entityId, releaseId, from, to });
   }
 
   @Post()

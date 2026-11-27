@@ -57,9 +57,18 @@ const MAGIC_RULES: MagicRule[] = [
     match: isZip,
   },
   {
-    mimes: ['text/plain', 'text/csv', 'text/markdown'],
+    mimes: ['text/plain', 'text/csv', 'text/markdown', 'application/sql', 'text/x-sql', 'application/x-sql'],
     // 无魔数：含 NUL 字节视为二进制伪装文本
     match: (b) => !b.includes(0x00),
+  },
+  // 老版 Office（doc/xls/ppt）是 OLE2 复合文档，魔数 D0CF11E0A1B11AE1
+  // （此前白名单收录了这三个 MIME 却没有对应规则，上传时会被判"类型不允许"）
+  {
+    mimes: ['application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint'],
+    match: (b) =>
+      b.length >= 8 &&
+      b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0 &&
+      b[4] === 0xa1 && b[5] === 0xb1 && b[6] === 0x1a && b[7] === 0xe1,
   },
 ];
 
@@ -74,3 +83,33 @@ export function assertFileContentMatchesMime(mimetype: string, header: Buffer): 
     throw new Error(`File content does not match declared type "${mimetype}"`);
   }
 }
+
+/**
+ * 允许上传的 MIME 全集 —— 唯一事实来源（2026-11-27 收敛）。
+ *
+ * 此前 controller 和 service 各维护一份 ALLOWED_MIME_TYPES，而这里的 MAGIC_RULES
+ * 又是第三份，三者不同步就会出「白名单放行、魔数表找不到规则 → 上传被拒」的坑
+ * （老版 .doc/.xls/.ppt 就这么被挡了很久）。
+ *
+ * 现在白名单直接由规则表派生：**要加文件类型，只在下面 MAGIC_RULES 里加一条规则**。
+ */
+export const ALLOWED_UPLOAD_MIMES: ReadonlySet<string> = new Set(
+  MAGIC_RULES.flatMap((r) => r.mimes),
+);
+
+export function isAllowedUploadMime(mimetype: string): boolean {
+  return ALLOWED_UPLOAD_MIMES.has(String(mimetype || '').toLowerCase());
+}
+
+/**
+ * 文本类 MIME：下载/预览时统一转成 UTF-8 并显式声明 charset。
+ * 不加 charset 时浏览器会按系统编码（中文 Windows 用 GBK）解码 UTF-8，中文即乱码。
+ */
+export const TEXT_LIKE_MIMES: ReadonlySet<string> = new Set([
+  'text/plain',
+  'text/csv',
+  'text/markdown',
+  'application/sql',
+  'text/x-sql',
+  'application/x-sql',
+]);

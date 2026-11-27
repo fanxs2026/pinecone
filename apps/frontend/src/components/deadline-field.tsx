@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import DateInput from '@/components/date-input';
 import { computeDeadlineRisk, type DeadlineRisk, type DeadlineRiskResult } from '@/lib/deadline-risk';
 
 /**
@@ -84,12 +85,12 @@ export function DeadlineField({
     <div className="flex items-center gap-3 py-3">
       <span className="w-20 shrink-0 text-sm text-muted-foreground">{t('label')}</span>
 
-      <input
-        type="date"
+      {/* 固定显示 yyyy-mm-dd：原生 date 控件会按系统语言显示 2026/11/25 */}
+      <DateInput
         value={ownDate}
         disabled={disabled}
-        onChange={(e) => onSave(e.target.value || null)}
-        className="flex h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+        onChange={(v) => onSave(v || null)}
+        className="w-[150px]"
       />
 
       {riskLabel && (

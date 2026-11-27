@@ -9,6 +9,8 @@
  * 「模板字符串 + << /... >> PDF 字典语法」上的解析异常。
  */
 
+import { formatDate } from './date-utils';
+
 // A4 比例页面（单位：pt，PDF 内部用点）
 const PAGE_W = 1000;
 const PAGE_H = 1414; // A4 比例 1:1.414
@@ -302,7 +304,7 @@ export async function downloadPdf(
   rows: (string | number | null | undefined)[][],
   title?: string,
 ): Promise<void> {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = formatDate(new Date()); // 本地日期：toISOString 走 UTC，凌晨导出会差一天
 
   // 测量列宽（用独立 canvas，与绘制同字体环境）
   const measureCanvas = document.createElement('canvas');

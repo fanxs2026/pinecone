@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { TiptapEditor } from '@/components/kb/tiptap-editor';
 import { showToast } from '@/components/simple-toast';
 import { PageTree } from '@/components/kb/page-tree';
+import { apiBaseUrl } from '@/lib/runtime-config';
 import {
   ArrowLeft, Pencil, Save, X,
   MessageSquare, Send, Trash2, Plus,
@@ -35,6 +37,10 @@ export default function PageDetailPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState<any>(null);
   const [editContentText, setEditContentText] = useState('');
+  // 2026-11-27 修复「切页不刷新」：editContent 是独立 state，切到另一篇时会残留上一页正文。
+  // 记下这份草稿属于哪个 page，渲染时对不上就回落到 page.content ——
+  // 用派生判断而不是 useEffect 同步，避免「编辑器先挂载、effect 后执行」的时序问题。
+  const [editContentPageId, setEditContentPageId] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<string | null>(null);
   // G1 P1-B 页面权限（编辑态）
@@ -57,13 +63,17 @@ export default function PageDetailPage() {
   const handleEditorChange = useCallback((json: any, text: string) => {
     setEditContent(json);
     setEditContentText(text);
-  }, []);
+    setEditContentPageId(pageId);
+  }, [pageId]);
 
   const { data: page, isLoading } = useQuery({
     queryKey: ['kb-page', workspaceId, pageId],
     queryFn: () => kbPagesApi.get(workspaceId!, pageId).then((r) => r.data),
     enabled: !!workspaceId,
   });
+
+  // 2026-11-27：TiptapEditor 用 key={pageId} 重挂即可，内容由下方 editorContent 派生，
+  // 不需要 effect 同步（effect 在 commit 后才跑，编辑器早已用旧 content 挂载）。
 
   const { data: treePages = [] } = useQuery({
     queryKey: ['kb-pages-tree', workspaceId, spaceId],
@@ -247,6 +257,7 @@ export default function PageDetailPage() {
     setEditTitle(page.title);
     setEditContent(page.content || null);
     setEditContentText(page.contentText || '');
+    setEditContentPageId(page.id);
     setEditing(true);
   };
 
@@ -406,10 +417,11 @@ export default function PageDetailPage() {
               )}
             </div>
             <TiptapEditor
-              // V 修复（2026-08-19）：按 pageId 加 key——切换页面时整体重挂，
-              // Yjs provider/文档随卸载销毁、随挂载重建（避免旧 pageId 的协同残留）
-              key={pageId}
-              content={editContent}
+              // V 修复（2026-08-19）：切页整体重挂，Yjs provider 随卸载销毁、随挂载重建
+              // 2026-11-27：key 改用 page.id（数据就绪后才重建），content 按草稿归属页派生，
+              // 否则切到另一篇仍会渲染上一页残留的 editContent
+              key={page.id}
+              content={editContentPageId === page.id ? editContent : page.content}
               onChange={handleEditorChange}
               placeholder={t('editorPlaceholder')}
               className="flex-1"
@@ -422,7 +434,7 @@ export default function PageDetailPage() {
             <div className="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
               <span>{page.author?.name || page.author?.email}</span>
               <span>·</span>
-              <span>{new Date(page.updatedAt).toLocaleDateString('zh-CN')}</span>
+              <span>{formatDate(page.updatedAt)}</span>
               <span>·</span>
               <span>v{page.version}</span>
               {page.visibility === 'PRIVATE' && (
@@ -523,7 +535,7 @@ export default function PageDetailPage() {
                     <div key={v.id} className="flex items-center gap-3 rounded-md border bg-card px-3 py-2 text-xs">
                       <span className="w-14 shrink-0 font-medium">v{v.version}</span>
                       <span className="flex-1 truncate text-muted-foreground">
-                        {new Date(v.createdAt).toLocaleString('zh-CN')} · {v.editor?.name || v.editor?.email || '-'}
+                        {formatDateTime(v.createdAt)} · {v.editor?.name || v.editor?.email || '-'}
                       </span>
                       <Button
                         size="sm"
@@ -555,10 +567,28 @@ export default function PageDetailPage() {
               {attachments.map((att: Attachment) => (
                 <div key={att.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
                   <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="flex-1 truncate">{att.fileName}</span>
+                  {/* 2026-11-27：附件此前只能删不能取。下载走后端鉴权端点
+                      GET /workspaces/:wsId/uploads/:id/download（生产环境静态 /uploads 已关闭） */}
+                  <a
+                    href={`${apiBaseUrl()}/workspaces/${workspaceId}/uploads/${att.id}/download?inline=1`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 truncate hover:text-primary hover:underline"
+                    title={c('download')}
+                  >
+                    {att.fileName}
+                  </a>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {att.fileSize > 1024 ? `${(att.fileSize / 1024).toFixed(1)} KB` : `${att.fileSize} B`}
                   </span>
+                  <a
+                    href={`${apiBaseUrl()}/workspaces/${workspaceId}/uploads/${att.id}/download`}
+                    download
+                    title={c('download')}
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <Download className="h-3 w-3" />
+                  </a>
                   {/* Only the uploader sees the delete button (backend enforces uploader-or-admin) */}
                   {att.uploadedBy.id === user?.id && (
                     <Button
@@ -702,7 +732,7 @@ function CommentThread({
             {comment.author?.name || comment.author?.email}
           </span>
           <span className="text-xs text-muted-foreground">
-            {new Date(comment.createdAt).toLocaleDateString('zh-CN')}
+            {formatDate(comment.createdAt)}
           </span>
         </div>
         <div className="flex items-center gap-1">

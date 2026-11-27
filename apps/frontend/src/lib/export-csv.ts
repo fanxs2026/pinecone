@@ -2,6 +2,8 @@
  * 导出 CSV 工具 — 带 BOM（\uFEFF），避免 Excel 打开中文乱码
  */
 
+import { formatDate } from './date-utils';
+
 function escapeCsvCell(value: string | number | null | undefined): string {
   let s = String(value ?? '');
   // CSV formula injection: neutralize = + - @ and tab/CR prefixes so Excel
@@ -26,7 +28,7 @@ export function downloadCsv(
   headers: string[],
   rows: (string | number | null | undefined)[][]
 ): void {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = formatDate(new Date()); // 本地日期：toISOString 走 UTC，凌晨导出会差一天
   const content =
     '\uFEFF' +
     [headers, ...rows]

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import EntityDetailHeader from '@/components/entity-detail-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, Bug, Check, FlaskConical, Loader2, Plus, Trash2, X } from 'lucide-react';
@@ -144,30 +145,39 @@ export default function TestCaseDetailPage() {
         <Button variant="ghost" size="sm" className="mb-2" onClick={() => router.back()}>
           <ArrowLeft className="mr-1 h-4 w-4" />{c('back')}
         </Button>
-        <div className="flex items-center gap-2">
-          {testCase.code && <Badge variant="outline" className="font-mono text-xs">{testCase.code}</Badge>}
-          <h1 className="text-2xl font-bold tracking-tight">{testCase.title}</h1>
-        </div>
-        <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-          <Badge variant="outline">{t(`type${testCase.type}`) || testCase.type}</Badge>
-          <Badge variant="secondary" className={priorityColor[testCase.priority] || ''}>{testCase.priority}</Badge>
-          {testCase.story && (
-            <span>
-              {t('linkedStory')}:{' '}
-              <Link href={`/stories/${testCase.story.id}`} className="text-primary hover:underline">
-                {testCase.story.title}
-              </Link>
-            </span>
-          )}
-          {testCase.release && (
-            <span>
-              {t('inRelease')}:{' '}
-              <Link href={`/releases/${testCase.release.id}`} className="text-primary hover:underline">
-                {testCase.release.name}
-              </Link>
-            </span>
-          )}
-        </div>
+        <EntityDetailHeader
+          code={testCase.code}
+          title={testCase.title}
+          typeBadge={<Badge variant="outline">{t(`type${testCase.type}`) || testCase.type}</Badge>}
+          priorityBadge={
+            <Badge variant="secondary" className={priorityColor[testCase.priority] || ''}>
+              {testCase.priority}
+            </Badge>
+          }
+          createdAt={(testCase as any).createdAt ?? null}
+          extra={
+            (testCase.story || testCase.release) && (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                {testCase.story && (
+                  <span>
+                    {t('linkedStory')}:{' '}
+                    <Link href={`/stories/${testCase.story.id}`} className="text-primary hover:underline">
+                      {testCase.story.title}
+                    </Link>
+                  </span>
+                )}
+                {testCase.release && (
+                  <span>
+                    {t('inRelease')}:{' '}
+                    <Link href={`/releases/${testCase.release.id}`} className="text-primary hover:underline">
+                      {testCase.release.name}
+                    </Link>
+                  </span>
+                )}
+              </div>
+            )
+          }
+        />
       </div>
 
       {/* 用例内容 */}
@@ -186,7 +196,8 @@ export default function TestCaseDetailPage() {
             {testCase.description ? (
               <p className="whitespace-pre-wrap text-sm">{testCase.description}</p>
             ) : (
-              <Input
+              <textarea
+                className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                 placeholder={t('preconditionPlaceholder')}
                 defaultValue=""
                 onBlur={(e) => e.target.value.trim() && editField('description', e.target.value.trim())}
@@ -266,7 +277,8 @@ export default function TestCaseDetailPage() {
                 </button>
               </div>
             ) : (
-              <Input
+              <textarea
+                className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                 placeholder={t('expectedResultPlaceholder')}
                 defaultValue=""
                 onBlur={(e) => e.target.value.trim() && editField('expectedResult', e.target.value.trim())}

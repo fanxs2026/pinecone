@@ -397,7 +397,7 @@ export default function SupportsPage() {
               placeholder={t('descPlaceholder')}
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
-              className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             />
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{t('type')}:</span>

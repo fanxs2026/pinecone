@@ -73,14 +73,36 @@ export default function TestPlanWalkthroughPage() {
   }
 
   const items = data.items;
-  const current = items[index];
+
+  // 2026-11-27 修复：计划里没有测试单（或 index 越界）时 current 为 undefined，
+  // 下面直接读 current.steps 会抛 "Cannot read properties of undefined" → 整页白屏。
+  if (items.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Link href="/test-plans" className="text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="h-5 w-5" />
+          </Link>
+          <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
+            <ClipboardCheck className="h-5 w-5" /> {data.plan.name}
+          </h1>
+        </div>
+        <Card>
+          <CardContent className="py-16 text-center text-sm text-muted-foreground">{t('empty')}</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const safeIndex = Math.min(Math.max(index, 0), items.length - 1);
+  const current = items[safeIndex];
   const doneCount = items.filter((i) => i.status !== 'UNTESTED').length;
   const passCount = items.filter((i) => i.status === 'PASS').length;
   const progress = data.total > 0 ? Math.round((doneCount / data.total) * 100) : 0;
   const steps = (current.steps ?? []) as { order?: number; action?: string; expected?: string }[];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="space-y-4">
       {/* 头部 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -93,7 +115,7 @@ export default function TestPlanWalkthroughPage() {
             </h1>
             <p className="text-xs text-muted-foreground">
               {data.plan.release ? `${data.plan.release.name} (${data.plan.release.version})` : t('noRelease')}
-              {' · '}{index + 1} / {data.total}
+              {' · '}{safeIndex + 1} / {data.total}
             </p>
           </div>
         </div>
@@ -147,7 +169,7 @@ export default function TestPlanWalkthroughPage() {
           {/* 备注 */}
           <div>
             <textarea
-              className="min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
               placeholder={t('notePlaceholder')}
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -206,11 +228,11 @@ export default function TestPlanWalkthroughPage() {
         <Button variant="outline" size="sm" disabled={index === 0} onClick={() => setIndex((i) => i - 1)}>
           <ChevronLeft className="mr-1 h-4 w-4" /> {t('prev')}
         </Button>
-        <span className="text-xs text-muted-foreground">{index + 1} / {data.total}</span>
+        <span className="text-xs text-muted-foreground">{safeIndex + 1} / {data.total}</span>
         <Button
           variant="outline"
           size="sm"
-          disabled={index >= data.total - 1}
+          disabled={safeIndex >= items.length - 1}
           onClick={() => setIndex((i) => i + 1)}
         >
           {t('next')} <ChevronRight className="ml-1 h-4 w-4" />

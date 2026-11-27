@@ -1,5 +1,6 @@
 'use client';
 
+import DateInput from '@/components/date-input';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -74,10 +75,10 @@ function EditReleaseForm({ release, onDone }: { release: Release; onDone: () => 
       <Input size={1} placeholder={t('versionPlaceholder')} value={version} onChange={(e) => setVersion(e.target.value)} />
       <Input size={1} placeholder={c('description')} value={description} onChange={(e) => setDescription(e.target.value)} />
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div><label className="text-muted-foreground">{t('start')}</label><Input type="date" size={1} value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
-        <div><label className="text-muted-foreground">{t('end')}</label><Input type="date" size={1} value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
-        <div><label className="text-muted-foreground">Stage</label><Input type="date" size={1} value={stageDate} onChange={(e) => setStageDate(e.target.value)} /></div>
-        <div><label className="text-muted-foreground">Prod</label><Input type="date" size={1} value={productionDate} onChange={(e) => setProductionDate(e.target.value)} /></div>
+        <div><label className="text-muted-foreground">{t('start')}</label><DateInput value={startDate} onChange={setStartDate} className="w-full" /></div>
+        <div><label className="text-muted-foreground">{t('end')}</label><DateInput value={endDate} onChange={setEndDate} className="w-full" /></div>
+        <div><label className="text-muted-foreground">Stage</label><DateInput value={stageDate} onChange={setStageDate} className="w-full" /></div>
+        <div><label className="text-muted-foreground">Prod</label><DateInput value={productionDate} onChange={setProductionDate} className="w-full" /></div>
       </div>
       <div>
         <label className="text-xs text-muted-foreground">{t('totalCapacity')}</label>
@@ -205,19 +206,19 @@ export default function ReleasesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">{t('startDate')}</label>
-                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <DateInput value={startDate} onChange={setStartDate} className="w-full" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">{t('endDate')}</label>
-                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                <DateInput value={endDate} onChange={setEndDate} className="w-full" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">{t('stageDate')}</label>
-                <Input type="date" value={stageDate} onChange={(e) => setStageDate(e.target.value)} />
+                <DateInput value={stageDate} onChange={setStageDate} className="w-full" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">{t('prodDate')}</label>
-                <Input type="date" value={productionDate} onChange={(e) => setProductionDate(e.target.value)} />
+                <DateInput value={productionDate} onChange={setProductionDate} className="w-full" />
               </div>
             </div>
             <div>

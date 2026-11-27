@@ -166,7 +166,7 @@ export default function FeedbackPortalPage() {
               placeholder={t('descPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             />
             {data.requireEmail && (
               <Input type="email" placeholder={t('emailPlaceholder')} value={email} onChange={(e) => setEmail(e.target.value)} />

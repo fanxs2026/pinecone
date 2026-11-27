@@ -481,7 +481,17 @@
     "totalWithSubtasks": "总工时（含子任务）",
     "storyId": "任务编号",
     "recorder": "记录人",
-    "entry": "工时记录"
+    "entry": "工时记录",
+    "allReleases": "全部发布周期",
+    "allMembers": "全部记录人",
+    "clearFilter": "清除筛选",
+    "filteredTotal": "筛选结果",
+    "allEntityTypes": "全部实体类型",
+    "etSTORY": "任务",
+    "etFEATURE": "功能",
+    "etSUPPORT": "支持请求",
+    "etIDEA": "需求",
+    "etTEST_CASE": "测试单"
   },
   "ideas": {
     "noWorkspaceTitle": "请先创建或选择工作区",

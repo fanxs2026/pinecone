@@ -114,7 +114,8 @@ export default function StoryTestTab({ workspaceId, storyId }: Props) {
                 <option value="API">{t('typeAPI')}</option>
               </select>
             </div>
-            <Input
+            <textarea
+              className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
               placeholder={t('expectedResultPlaceholder')}
               value={expectedResult}
               onChange={(e) => setExpectedResult(e.target.value)}

@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDate } from '@/lib/date-utils';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,7 +15,7 @@ function timeAgo(iso: string): string {
   if (s < 60) return '刚刚';
   if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
   if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 export function NotificationBell({ workspaceId }: { workspaceId: string | null }) {

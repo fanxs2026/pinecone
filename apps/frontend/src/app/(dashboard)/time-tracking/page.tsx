@@ -1,8 +1,9 @@
 'use client';
 
+import DateInput from '@/components/date-input';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { timeEntryApi, storyApi, workspaceApi } from '@/lib/api-client';
+import { timeEntryApi, storyApi, workspaceApi, releaseApi } from '@/lib/api-client';
 import { formatDate } from '@/lib/date-utils';
 import { toHoursNumber } from '@/lib/number-utils';
 import { Button } from '@/components/ui/button';
@@ -10,11 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Clock, Plus, Trash2, ExternalLink, ListTree } from 'lucide-react';
+import { Clock, Plus, Trash2, ExternalLink, ListTree, Filter, X } from 'lucide-react';
 import { useWorkspace } from '@/hooks/use-workspace';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { SubtaskDrawer, type SubtaskLike } from '@/components/subtask-drawer';
+
+/** 工时可按实体类型筛选：任务用 storyId 关联，其余实体写 entityType（见后端 service） */
+const ENTITY_TYPES = ['STORY', 'FEATURE', 'SUPPORT', 'IDEA', 'TEST_CASE'] as const;
 
 export default function TimeTrackingPage() {
   const queryClient = useQueryClient();
@@ -26,10 +30,21 @@ export default function TimeTrackingPage() {
   const [description, setDescription] = useState('');
   const [hours, setHours] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // 2026-11-27：列表筛选（此前后端只返回全量，页面没有任何过滤条件）
+  const [filterReleaseId, setFilterReleaseId] = useState('');
+  const [filterUserId, setFilterUserId] = useState('');
+  const [filterEntityType, setFilterEntityType] = useState('');
 
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['time-entries', workspaceId],
-    queryFn: () => timeEntryApi.list(workspaceId!).then((r) => r.data),
+    queryKey: ['time-entries', workspaceId, filterReleaseId, filterUserId, filterEntityType],
+    queryFn: () =>
+      timeEntryApi
+        .list(workspaceId!, {
+          releaseId: filterReleaseId || undefined,
+          userId: filterUserId || undefined,
+          entityType: filterEntityType || undefined,
+        })
+        .then((r) => r.data),
     enabled: !!workspaceId,
   });
   const entries = entriesData?.items ?? [];
@@ -48,6 +63,13 @@ export default function TimeTrackingPage() {
     queryFn: () => workspaceApi.members(workspaceId!).then((r) => r.data),
     enabled: !!workspaceId,
   });
+
+  const { data: releasesData } = useQuery({
+    queryKey: ['releases', workspaceId],
+    queryFn: () => releaseApi.list(workspaceId!).then((r) => r.data),
+    enabled: !!workspaceId,
+  });
+  const releases = releasesData?.items ?? [];
 
   /** 点开工时记录关联的 story：顶级 → 页签链接；子任务 → 拉完整数据开抽屉 */
   const openStory = async (storyId: string, parentId?: string | null) => {
@@ -109,6 +131,67 @@ export default function TimeTrackingPage() {
         </Button>
       </div>
 
+      {/* 筛选：实体类型 + 发布周期 + 记录人（2026-11-27） */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          value={filterEntityType}
+          onChange={(e) => setFilterEntityType(e.target.value)}
+        >
+          <option value="">{tTime('allEntityTypes')}</option>
+          {ENTITY_TYPES.map((x) => (
+            <option key={x} value={x}>
+              {tTime(`et${x}`)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          value={filterReleaseId}
+          onChange={(e) => setFilterReleaseId(e.target.value)}
+        >
+          <option value="">{tTime('allReleases')}</option>
+          {releases.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+              {r.version ? ` (${r.version})` : ''}
+            </option>
+          ))}
+        </select>
+        <select
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          value={filterUserId}
+          onChange={(e) => setFilterUserId(e.target.value)}
+        >
+          <option value="">{tTime('allMembers')}</option>
+          {(members ?? []).map((m) => (
+            <option key={m.userId} value={m.userId}>
+              {m.user?.name || m.user?.email}
+            </option>
+          ))}
+        </select>
+        {(filterReleaseId || filterUserId || filterEntityType) && (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFilterReleaseId('');
+                setFilterUserId('');
+                setFilterEntityType('');
+              }}
+            >
+              <X className="mr-1 h-3.5 w-3.5" />
+              {tTime('clearFilter')}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {tTime('filteredTotal')}: {entries.length}
+            </span>
+          </>
+        )}
+      </div>
+
       {showCreate && (
         <Card>
           <CardHeader><CardTitle className="text-base">{tTime('record')}</CardTitle></CardHeader>
@@ -125,7 +208,7 @@ export default function TimeTrackingPage() {
             <Input placeholder={tTime('workDescription')} value={description} onChange={(e) => setDescription(e.target.value)} />
             <div className="flex gap-2">
               <Input type="number" step="0.5" min="0" placeholder={tTime('hoursPlaceholder')} value={hours} onChange={(e) => setHours(e.target.value)} />
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateInput value={date} onChange={setDate} className="w-[170px]" />
             </div>
             <div className="flex gap-2">
               <Button onClick={() => createMutation.mutate()} disabled={!selectedStoryId || !hours || !description}>

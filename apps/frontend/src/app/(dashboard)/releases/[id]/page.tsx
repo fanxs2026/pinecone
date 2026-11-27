@@ -1,5 +1,6 @@
 'use client';
 
+import DateInput from '@/components/date-input';
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -155,13 +156,16 @@ export default function ReleaseDetailPage() {
     setEditField(field);
   };
 
-  const saveEdit = () => {
+  // override：DateInput 在 commit 时才回调，此时 editVal 还没进 state，
+  // 所以把新值直接传进来，避免"改完日期按回车/失焦保存的是旧值"。
+  const saveEdit = (override?: string) => {
     if (!editField) return;
+    const next = override !== undefined ? override : editVal;
     const current = (release as any)[editField];
-    if (editVal !== (current ?? '')) {
-      const data: any = { [editField]: editVal || undefined };
+    if (next !== (current ?? '')) {
+      const data: any = { [editField]: next || undefined };
       if (editField === 'totalCapacity') {
-        data.totalCapacity = editVal ? parseInt(editVal, 10) : null;
+        data.totalCapacity = next ? parseInt(next, 10) : null;
       }
       updateMutation.mutate(data);
     } else {
@@ -231,7 +235,7 @@ export default function ReleaseDetailPage() {
               <div className="flex flex-1 items-center gap-2">
                 <Input value={editVal} onChange={(e) => setEditVal(e.target.value)} autoFocus
                   onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditField(null); }} />
-                <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
+                <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditField(null)}><X className="h-3 w-3 mr-1" />{c('cancel')}</Button>
               </div>
             ) : (
@@ -249,7 +253,7 @@ export default function ReleaseDetailPage() {
               <div className="flex flex-1 items-center gap-2">
                 <Input value={editVal} onChange={(e) => setEditVal(e.target.value)} autoFocus
                   onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditField(null); }} />
-                <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
+                <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditField(null)}><X className="h-3 w-3 mr-1" />{c('cancel')}</Button>
               </div>
             ) : (
@@ -266,10 +270,10 @@ export default function ReleaseDetailPage() {
             {editField === 'description' ? (
               <div className="flex flex-1 flex-col gap-2">
                 <textarea value={editVal} onChange={(e) => setEditVal(e.target.value)}
-                  className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
+                  className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
                   onKeyDown={(e) => { if (e.key === 'Escape') setEditField(null); }} />
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
+                  <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
                   <Button size="sm" variant="ghost" onClick={() => setEditField(null)}><X className="h-3 w-3 mr-1" />{c('cancel')}</Button>
                 </div>
               </div>
@@ -289,10 +293,19 @@ export default function ReleaseDetailPage() {
               </span>
               {editField === key ? (
                 <div className="flex flex-1 items-center gap-2">
-                  <Input type="date" value={editVal} onChange={(e) => setEditVal(e.target.value)} autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditField(null); }} />
-                  <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditField(null)}><X className="h-3 w-3 mr-1" />{c('cancel')}</Button>
+                  {/* 固定 yyyy-mm-dd：选完或失焦即保存 */}
+                  <DateInput
+                    value={editVal}
+                    onChange={(v) => {
+                      setEditVal(v);
+                      saveEdit(v);
+                    }}
+                    autoFocus
+                    className="w-[150px]"
+                  />
+                  <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
+                  {/* 日期框失焦即保存：点取消前阻止焦点转移，否则 blur 会先把改动存下去 */}
+                  <Button size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => setEditField(null)}><X className="h-3 w-3 mr-1" />{c('cancel')}</Button>
                 </div>
               ) : (
                 <div className="flex flex-1 items-center justify-between">
@@ -310,7 +323,7 @@ export default function ReleaseDetailPage() {
               <div className="flex flex-1 items-center gap-2">
                 <Input type="number" min="0" value={editVal} onChange={(e) => setEditVal(e.target.value)} autoFocus
                   onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditField(null); }} />
-                <Button size="sm" onClick={saveEdit} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
+                <Button size="sm" onClick={() => saveEdit()} disabled={updateMutation.isPending}><Check className="h-3 w-3 mr-1" />{c('save')}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditField(null)}><X className="h-3 w-3 mr-1" />{c('cancel')}</Button>
               </div>
             ) : (

@@ -1,5 +1,6 @@
 'use client';
 
+import DateInput from '@/components/date-input';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -183,11 +184,10 @@ export function CustomFieldsSection({
                   )}
 
                   {def.type === 'DATE' && (
-                    <DraftTextInput
-                      initial={typeof raw === 'string' ? raw.slice(0, 10) : ''}
-                      type="date"
-                      fullWidth={stacked}
-                      onCommit={(v) => commit(def.key, v || null)}
+                    <DateInput
+                      value={typeof raw === 'string' ? raw.slice(0, 10) : ''}
+                      onChange={(v) => commit(def.key, v || null)}
+                      className={stacked ? 'w-full' : 'w-[150px]'}
                     />
                   )}
 

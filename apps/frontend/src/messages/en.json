@@ -481,7 +481,17 @@
     "totalWithSubtasks": "Total (incl. subtasks)",
     "storyId": "Story ID",
     "recorder": "Recorder",
-    "entry": "Time entries"
+    "entry": "Time entries",
+    "allReleases": "All releases",
+    "allMembers": "All members",
+    "clearFilter": "Clear filters",
+    "filteredTotal": "Filtered",
+    "allEntityTypes": "All entity types",
+    "etSTORY": "Task",
+    "etFEATURE": "Feature",
+    "etSUPPORT": "Support",
+    "etIDEA": "Idea",
+    "etTEST_CASE": "Test case"
   },
   "ideas": {
     "noWorkspaceTitle": "Select or create a workspace first",

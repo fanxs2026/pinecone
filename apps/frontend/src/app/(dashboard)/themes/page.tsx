@@ -199,7 +199,7 @@ export default function ThemesPage() {
               placeholder={t('descPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             />
             <div className="flex items-center gap-1.5">
               {PRESET_COLORS.map((cl) => (

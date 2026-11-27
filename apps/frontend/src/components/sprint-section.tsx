@@ -1,5 +1,7 @@
 'use client';
 
+import DateInput from '@/components/date-input';
+import { formatDate } from '@/lib/date-utils';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sprintsApi, releaseApi, type Sprint } from '@/lib/api-client';
@@ -123,8 +125,8 @@ export function SprintSection({ workspaceId }: { workspaceId: string | null }) {
         {showForm && (
           <div className="grid grid-cols-2 gap-2 rounded-md border p-3 text-sm">
             <Input value={name} placeholder={t('namePh')} onChange={(e) => setName(e.target.value)} className="h-8 col-span-2" />
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-8" />
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-8" />
+            <DateInput value={startDate} onChange={setStartDate} className="h-8 w-full" />
+            <DateInput value={endDate} onChange={setEndDate} className="h-8 w-full" />
             <select
               value={releaseId}
               onChange={(e) => setReleaseId(e.target.value)}
@@ -182,7 +184,7 @@ export function SprintSection({ workspaceId }: { workspaceId: string | null }) {
                     </Badge>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {sp.startDate ? new Date(sp.startDate).toLocaleDateString() : '?'} ~ {sp.endDate ? new Date(sp.endDate).toLocaleDateString() : '?'}
+                    {sp.startDate ? formatDate(sp.startDate) : '?'} ~ {sp.endDate ? formatDate(sp.endDate) : '?'}
                     {' ｜ '}
                     {t('progress')}: {sp.doneCount ?? 0}/{sp.storyCount ?? 0} ({progress}%)
                   </p>

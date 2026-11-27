@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDate } from '@/lib/date-utils';
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -154,7 +155,7 @@ export default function SpaceDetailPage() {
               <div className="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
                 <span>{selectedPage.author?.name || selectedPage.author?.email}</span>
                 <span>·</span>
-                <span>{new Date(selectedPage.updatedAt).toLocaleDateString('zh-CN')}</span>
+                <span>{formatDate(selectedPage.updatedAt)}</span>
                 <span>·</span>
                 <span className="rounded bg-muted px-1.5 py-0.5 text-xs">
                   {selectedPage.status === 'published'

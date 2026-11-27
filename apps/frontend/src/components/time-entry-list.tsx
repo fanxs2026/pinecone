@@ -1,5 +1,6 @@
 'use client';
 
+import DateInput from '@/components/date-input';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { timeEntryApi } from '@/lib/api-client';
@@ -161,12 +162,7 @@ export default function TimeEntryList({
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground">{td('dateLabel')}</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-          />
+          <DateInput value={date} onChange={(v) => setDate(v)} className="h-8 rounded-md border border-input bg-transparent px-2 text-sm w-[150px]" />
         </div>
         <label className="flex items-center gap-1.5 text-sm">
           <input

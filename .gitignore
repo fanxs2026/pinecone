@@ -22,8 +22,9 @@ generated/
 pgdata/
 # 根目录数据目录（知识库协同持久化等运行时数据）；勿写裸 data/（会误伤子目录）
 /data/
-# 只忽略根目录上传目录；勿写裸 uploads/（会误伤 apps/backend/src/modules/uploads）
+# 上传目录：只忽略运行时目录，勿写裸 uploads/（会误伤 apps/backend/src/modules/uploads）
 /uploads/
+/apps/backend/uploads/
 backups/
 *.dump
 部署方法.txt

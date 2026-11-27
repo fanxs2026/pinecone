@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import EntityTabs from '@/components/entity-tabs';
+import EntityDetailHeader from '@/components/entity-detail-header';
 import CommentSection from '@/components/comment-section';
 import HistoryTimeline from '@/components/history-timeline';
 import RelationsPanel from '@/components/relations-panel';
@@ -71,6 +72,9 @@ export default function SupportDetailPage() {
   const [editDesc, setEditDesc] = useState(false);
   const [titleVal, setTitleVal] = useState('');
   const [descVal, setDescVal] = useState('');
+  // 根因与描述同构：平时显示文本，点编辑才是 10 行输入框（此前常驻 textarea 白占高度）
+  const [editRootCause, setEditRootCause] = useState(false);
+  const [rootCauseVal, setRootCauseVal] = useState('');
 
   const [showCloneStory, setShowCloneStory] = useState(false);
   const [cloneFeatureId, setCloneFeatureId] = useState('');
@@ -245,7 +249,7 @@ export default function SupportDetailPage() {
                 <textarea
                   value={descVal}
                   onChange={(e) => setDescVal(e.target.value)}
-                  className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                  className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                   autoFocus
                   onKeyDown={(e) => { if (e.key === 'Escape') setEditDesc(false); }}
                 />
@@ -316,13 +320,55 @@ export default function SupportDetailPage() {
           {/* Root Cause（仅缺陷，选填） */}
           {support.type === 'DEFECT' && (
             <div className="flex items-start gap-3 py-3">
-              <span className="w-20 shrink-0 text-sm text-muted-foreground pt-1">{t('rootCause')}</span>
-              <textarea
-                className="min-h-[80px] flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                placeholder={t('rootCausePlaceholder')}
-                defaultValue={support.rootCause || ''}
-                onBlur={(e) => { if (e.target.value !== (support.rootCause || '')) updateMutation.mutate({ rootCause: e.target.value || null }); }}
-              />
+              <span className="w-20 shrink-0 pt-1 text-sm text-muted-foreground">{t('rootCause')}</span>
+              {editRootCause ? (
+                <div className="flex flex-1 flex-col gap-2">
+                  <textarea
+                    value={rootCauseVal}
+                    onChange={(e) => setRootCauseVal(e.target.value)}
+                    className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                    placeholder={t('rootCausePlaceholder')}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setEditRootCause(false);
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (rootCauseVal !== (support.rootCause || '')) {
+                          updateMutation.mutate({ rootCause: rootCauseVal || null });
+                        } else {
+                          setEditRootCause(false);
+                        }
+                      }}
+                    >
+                      {c('save')}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditRootCause(false)}>
+                      {c('cancel')}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-1 items-start justify-between gap-2">
+                  <span className="whitespace-pre-wrap text-sm text-muted-foreground">
+                    {support.rootCause || td('noDescription')}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => {
+                      setRootCauseVal(support.rootCause || '');
+                      setEditRootCause(true);
+                    }}
+                  >
+                    {c('edit')}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -508,39 +554,33 @@ export default function SupportDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-2">
-          {support.code && (
-            <Badge variant="outline" className="font-mono text-xs tracking-wider">{support.code}</Badge>
-          )}
-          {/* 2026-08-14：状态下拉移至编号右侧 */}
-          <select
-            className="inline-flex h-6 items-center rounded-md border border-input bg-transparent px-1.5 text-xs font-medium"
-            value={support.status}
-            onChange={(e) => updateMutation.mutate({ status: e.target.value })}
-          >
-            {SUPPORT_STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>{statusLabelMap[s.value] || s.value}</option>
-            ))}
-          </select>
-          <VoteButton wsId={workspaceId!} entityType="SUPPORT" entityId={id} count={(support as any).voteCount ?? 0} invalidateKeys={['support', workspaceId, id]} />
-          <ScoreEditor wsId={workspaceId!} entityType="SUPPORT" entityId={id} score={(support as any).score ?? null} invalidateKeys={['support', workspaceId, id]} />
-          <h1 className="text-2xl font-bold tracking-tight">{support.title}</h1>
-        </div>
-        <div className="text-muted-foreground text-sm">
-          <Badge variant="secondary" className={SUPPORT_TYPES.find((s) => s.value === support.type)?.color || 'bg-gray-100'}>
-            {typeLabelMap[support.type]}
-          </Badge>
-          <Badge variant="secondary" className={`ml-1 ${statusColorMap[support.status] || 'bg-gray-100'}`}>
-            {statusLabelMap[support.status]}
-          </Badge>
-          {(support.assignee?.name || support.assigneeName) && (
-            <span className="ml-2">{c('owner')}: {support.assignee?.name || support.assigneeName}</span>
-          )}
-          <span className="ml-2">
-            {support.createdBy?.name || support.createdBy?.email} ·{' '}
-            {formatDate(support.createdAt)}
-          </span>
-        </div>
+        <EntityDetailHeader
+          code={support.code}
+          title={support.title}
+          typeBadge={
+            <Badge variant="secondary" className={SUPPORT_TYPES.find((s) => s.value === support.type)?.color || 'bg-gray-100'}>
+              {typeLabelMap[support.type]}
+            </Badge>
+          }
+          statusControl={
+            <select
+              className="inline-flex h-6 items-center rounded-md border border-input bg-transparent px-1.5 text-xs font-medium"
+              value={support.status}
+              onChange={(e) => updateMutation.mutate({ status: e.target.value })}
+            >
+              {SUPPORT_STATUSES.map((s) => (
+                <option key={s.value} value={s.value}>{statusLabelMap[s.value] || s.value}</option>
+              ))}
+            </select>
+          }
+          votes={<VoteButton wsId={workspaceId!} entityType="SUPPORT" entityId={id} count={(support as any).voteCount ?? 0} invalidateKeys={['support', workspaceId, id]} />}
+          score={<ScoreEditor wsId={workspaceId!} entityType="SUPPORT" entityId={id} score={(support as any).score ?? null} invalidateKeys={['support', workspaceId, id]} />}
+          ownerName={support.assignee?.name || support.assigneeName}
+          ownerLabel={c('owner')}
+          creatorName={support.createdBy?.name || support.createdBy?.email}
+          creatorLabel={c('creator')}
+          createdAt={support.createdAt}
+        />
       </div>
       <EntityTabs tabs={tabs} defaultTab="details" tabContents={tabContents} />
     </div>

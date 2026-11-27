@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDate, formatDateTime } from '@/lib/date-utils';
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { auditApi, workspaceApi, type AuditLogEntry, type Workspace } from '@/lib/api-client';
@@ -140,7 +141,7 @@ export function AdminAuditPanel({ isSystemAdmin }: { isSystemAdmin?: boolean }) 
               <tbody>
                 {data?.items.map((log: AuditLogEntry) => (
                   <tr key={log.id} className="hover:bg-muted/30">
-                    <td className="border-b px-3 py-1.5 whitespace-nowrap">{new Date(log.createdAt).toLocaleString('zh-CN')}</td>
+                    <td className="border-b px-3 py-1.5 whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
                     {/* 2026-08-19：优先显示姓名（原仅显示 userEmail/UUID 截断） */}
                     <td className="border-b px-3 py-1.5">{log.userName || log.userEmail || log.userId?.slice(0, 8) || '-'}</td>
                     <td className="border-b px-3 py-1.5">

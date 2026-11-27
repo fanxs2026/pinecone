@@ -1,5 +1,7 @@
 'use client';
 
+import DateInput from '@/components/date-input';
+import { formatDate } from '@/lib/date-utils';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -110,7 +112,7 @@ export function TodoList({ workspaceId, ideaId, members }: TodoListProps) {
     members.find((m) => m.userId === id)?.user.name || members.find((m) => m.userId === id)?.user.email || '?';
 
   const fmtDate = (d?: string | null) =>
-    d ? new Date(d).toLocaleDateString('zh-CN') : null;
+    d ? formatDate(d) : null;
 
   return (
     <Card className="border-0 shadow-none">
@@ -152,12 +154,7 @@ export function TodoList({ workspaceId, ideaId, members }: TodoListProps) {
                   <option key={m.userId} value={m.userId}>{m.user.name || m.user.email}</option>
                 ))}
               </select>
-              <Input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="h-9 w-[150px]"
-              />
+              <DateInput value={dueDate} onChange={(v) => setDueDate(v)} className="h-9 w-[150px]" />
             </div>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => { setShowForm(false); setTitle(''); setDescription(''); setAssigneeId(''); setDueDate(''); }}>
@@ -201,7 +198,7 @@ export function TodoList({ workspaceId, ideaId, members }: TodoListProps) {
                             <option key={m.userId} value={m.userId}>{m.user.name || m.user.email}</option>
                           ))}
                         </select>
-                        <Input type="date" value={editDue} onChange={(e) => setEditDue(e.target.value)} className="h-9 w-[150px]" />
+                        <DateInput value={editDue} onChange={(v) => setEditDue(v)} className="h-9 w-[150px]" />
                       </div>
                       <div className="flex justify-end gap-2">
                         <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>{c('cancel')}</Button>

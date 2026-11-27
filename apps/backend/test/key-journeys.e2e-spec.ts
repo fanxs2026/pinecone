@@ -280,7 +280,9 @@ describe('Key journeys (e2e)', () => {
     const test = await request(server).post('/api/admin/settings/smtp/test').set(adminAuth);
     expect(test.status).toBe(200);
     expect(test.body.ok).toBe(false);
-  });
+    // 该用例会真的发起一次 SMTP 连接（连不上也要等 DNS/连接超时），
+    // 默认 5s 在 DNS 解析慢的机器上会偶发超时，这里单独放宽
+  }, 20000);
 
   /**
    * E8 退出登录（2026-11-26 修复的回归用例）
@@ -408,5 +410,131 @@ describe('Key journeys (e2e)', () => {
       .send({ title: '带交付时限的特性', dueDate: '2026-12-31' });
     expect(feature.status).toBe(201);
     expect(String(feature.body.dueDate).slice(0, 10)).toBe('2026-12-31');
+  });
+
+  /**
+   * E11 工时筛选（2026-11-27 新增的实体类型 / 发布周期过滤）
+   *
+   * 要点：
+   *  - 发布周期的工时归属有三种（story.releaseId / story.feature.releaseId / 实体上），
+   *    任一没覆盖都会筛出空列表
+   *  - 非法 UUID 必须 400，而不是 Prisma P2023 冒成 500
+   */
+  it('E11 工时筛选：实体类型 / 发布周期 / 非法参数', async () => {
+    const rel = await request(server)
+      .post(`/api/workspaces/${wsId}/releases`)
+      .set(auth())
+      .send({ name: 'E2E 工时周期' });
+    expect([200, 201]).toContain(rel.status);
+    const releaseId = rel.body.id as string;
+
+    const sup = await request(server)
+      .post(`/api/workspaces/${wsId}/supports`)
+      .set(auth())
+      .send({ title: 'E2E 工时支持请求', releaseId });
+    expect(sup.status).toBe(201);
+    const supportId = sup.body.id as string;
+
+    const entry = await request(server)
+      .post(`/api/workspaces/${wsId}/time-entries`)
+      .set(auth())
+      .send({ entityType: 'SUPPORT', entityId: supportId, description: 'E2E 工时', hours: 1.5, date: '2026-11-27' });
+    expect(entry.status).toBe(201);
+
+    const byType = await request(server)
+      .get(`/api/workspaces/${wsId}/time-entries?entityType=SUPPORT`)
+      .set(auth());
+    expect(byType.status).toBe(200);
+    expect(byType.body.items.length).toBeGreaterThan(0);
+    expect(byType.body.items.every((i: any) => i.entityType === 'SUPPORT')).toBe(true);
+
+    const byRelease = await request(server)
+      .get(`/api/workspaces/${wsId}/time-entries?releaseId=${releaseId}`)
+      .set(auth());
+    expect(byRelease.status).toBe(200);
+    expect(byRelease.body.items.some((i: any) => i.entityId === supportId)).toBe(true);
+
+    // 任务类型不会报错（该工作区可能没有任务工时，只要不是 500）
+    const byStory = await request(server)
+      .get(`/api/workspaces/${wsId}/time-entries?entityType=STORY`)
+      .set(auth());
+    expect(byStory.status).toBe(200);
+
+    const bad = await request(server)
+      .get(`/api/workspaces/${wsId}/time-entries?releaseId=not-a-uuid`)
+      .set(auth());
+    expect(bad.status).toBe(400);
+  });
+
+  /**
+   * E12 附件下载（2026-11-27：前端此前只有删除按钮，接上了后端鉴权下载端点）
+   * 顺带覆盖 multer 升级（2.1.1 → 2.5.0，via overrides）后的上传链路。
+   */
+  it('E12 附件上传 / 下载 / 预览 / 未授权', async () => {
+    const entityId = '11111111-2222-3333-4444-555555555555';
+    const up = await request(server)
+      .post(`/api/workspaces/${wsId}/uploads?entityType=STORY&entityId=${entityId}&category=FILE`)
+      .set(auth())
+      .attach('file', Buffer.from('hello attachment'), { filename: '测试附件.txt', contentType: 'text/plain' });
+    expect([200, 201]).toContain(up.status);
+    const attId = up.body.id as string;
+    expect(attId).toBeTruthy();
+    // 中文文件名不能被 latin1 解码搞成乱码（2026-11-27 回归）
+    expect(up.body.fileName).toBe('测试附件.txt');
+
+    const dl = await request(server)
+      .get(`/api/workspaces/${wsId}/uploads/${attId}/download`)
+      .set(auth());
+    expect(dl.status).toBe(200);
+    expect(String(dl.headers['content-disposition'])).toContain('attachment');
+    expect(dl.text).toBe('hello attachment');
+
+    const inline = await request(server)
+      .get(`/api/workspaces/${wsId}/uploads/${attId}/download?inline=1`)
+      .set(auth());
+    expect(inline.status).toBe(200);
+    expect(String(inline.headers['content-disposition'])).toContain('inline');
+
+    const anon = await request(server).get(`/api/workspaces/${wsId}/uploads/${attId}/download`);
+    expect(anon.status).toBe(401);
+  });
+
+  /**
+   * E13 附件类型与编码（2026-11-27）
+   *  - .sql 脚本此前不在 MIME 白名单，被 400 拒掉
+   *  - 文本类预览不带 charset，中文 Windows 浏览器按 GBK 解码 UTF-8 → 乱码
+   */
+  it('E13 附件：.sql 可上传、文本预览声明 UTF-8 并转换 GBK', async () => {
+    const entityId = '11111111-2222-3333-4444-555555555555';
+    const upload = (buf: Buffer, filename: string, contentType: string) =>
+      request(server)
+        .post(`/api/workspaces/${wsId}/uploads?entityType=STORY&entityId=${entityId}&category=FILE`)
+        .set(auth())
+        .attach('file', buf, { filename, contentType });
+
+    const sql = await upload(Buffer.from('SELECT 1;'), 'script.sql', 'application/sql');
+    expect([200, 201]).toContain(sql.status);
+
+    // 浏览器对 .sql 常给空/octet-stream（未注册扩展名）→ 应按扩展名兜底放行
+    const sqlOctet = await upload(Buffer.from('SELECT 1;'), 'script2.sql', 'application/octet-stream');
+    expect([200, 201]).toContain(sqlOctet.status);
+
+    const md = await upload(Buffer.from('# 标题\n\n中文内容', 'utf8'), 'note.md', 'text/markdown');
+    expect([200, 201]).toContain(md.status);
+    const mdDl = await request(server)
+      .get(`/api/workspaces/${wsId}/uploads/${md.body.id}/download?inline=1`)
+      .set(auth());
+    expect(mdDl.status).toBe(200);
+    expect(String(mdDl.headers['content-type'])).toContain('charset=utf-8');
+    expect(mdDl.text).toContain('中文内容');
+
+    // GBK 编码的「中文」(D6 D0 CE C4) → 服务端应转成 UTF-8 再返回
+    const gbk = await upload(Buffer.from([0xd6, 0xd0, 0xce, 0xc4]), 'gbk.txt', 'text/plain');
+    expect([200, 201]).toContain(gbk.status);
+    const gbkDl = await request(server)
+      .get(`/api/workspaces/${wsId}/uploads/${gbk.body.id}/download?inline=1`)
+      .set(auth());
+    expect(gbkDl.status).toBe(200);
+    expect(gbkDl.text).toBe('中文');
   });
 });

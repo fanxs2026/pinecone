@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import EntityTabs from '@/components/entity-tabs';
+import EntityDetailHeader from '@/components/entity-detail-header';
 import CommentSection from '@/components/comment-section';
 import HistoryTimeline from '@/components/history-timeline';
 import RelationsPanel from '@/components/relations-panel';
@@ -205,7 +206,7 @@ export default function FeatureDetailPage() {
                 <textarea
                   value={descVal}
                   onChange={(e) => setDescVal(e.target.value)}
-                  className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                  className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                   autoFocus
                   onKeyDown={(e) => { if (e.key === 'Escape') setEditDesc(false); }}
                 />
@@ -426,40 +427,38 @@ export default function FeatureDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-2">
-          {feature.code && (
-            <Badge variant="outline" className="font-mono text-xs tracking-wider">{feature.code}</Badge>
-          )}
-          {/* 2026-08-14：状态下拉移至编号右侧 */}
-          <select
-            className="inline-flex h-6 items-center rounded-md border border-input bg-transparent px-1.5 text-xs font-medium"
-            value={feature.status}
-            onChange={(e) => updateMutation.mutate({ status: e.target.value })}
-          >
-            {FEATURE_STATUS_VALUES.map((v) => (
-              <option key={v} value={v}>{tStatus(`FEATURE_${v}`) || v}</option>
-            ))}
-          </select>
-          <VoteButton wsId={workspaceId!} entityType="FEATURE" entityId={id} count={(feature as any).voteCount ?? 0} invalidateKeys={['feature', workspaceId, id]} />
-          <ScoreEditor wsId={workspaceId!} entityType="FEATURE" entityId={id} score={(feature as any).score ?? null} invalidateKeys={['feature', workspaceId, id]} />
-          <h1 className="text-2xl font-bold tracking-tight">{feature.title}</h1>
-        </div>
-        <OkrTracePanel entityType="FEATURE" entityId={id} />
-        <div className="text-muted-foreground">
-          <Badge
-            variant="secondary"
-            className={ENTITY_PRIORITY_COLORS[feature.priority] || 'bg-gray-100 text-gray-500'}
-            title={ENTITY_PRIORITY_LABELS[feature.priority] ?? feature.priority}
-          >
-            {entityPriorityLabel(feature.priority)}
-          </Badge>
-          <Badge variant="secondary" className={getStatusBadgeClasses('FEATURE', feature.status)}>
-            {tStatus(`FEATURE_${feature.status}`) || feature.status}
-          </Badge>
-          {feature.release && <span className="ml-2">{feature.release.name}</span>}
-          {(feature.assignee?.name || feature.assigneeName) && <span className="ml-2">{feature.assignee?.name || feature.assigneeName}</span>}
-          <span className="ml-2">· {feature.createdBy?.name || feature.createdBy?.email} · {formatDate(feature.createdAt)}</span>
-        </div>
+        <EntityDetailHeader
+          code={feature.code}
+          title={feature.title}
+          priorityBadge={
+            <Badge
+              variant="secondary"
+              className={ENTITY_PRIORITY_COLORS[feature.priority] || 'bg-gray-100 text-gray-500'}
+              title={ENTITY_PRIORITY_LABELS[feature.priority] ?? feature.priority}
+            >
+              {entityPriorityLabel(feature.priority)}
+            </Badge>
+          }
+          statusControl={
+            <select
+              className="inline-flex h-6 items-center rounded-md border border-input bg-transparent px-1.5 text-xs font-medium"
+              value={feature.status}
+              onChange={(e) => updateMutation.mutate({ status: e.target.value })}
+            >
+              {FEATURE_STATUS_VALUES.map((v) => (
+                <option key={v} value={v}>{tStatus(`FEATURE_${v}`) || v}</option>
+              ))}
+            </select>
+          }
+          votes={<VoteButton wsId={workspaceId!} entityType="FEATURE" entityId={id} count={(feature as any).voteCount ?? 0} invalidateKeys={['feature', workspaceId, id]} />}
+          score={<ScoreEditor wsId={workspaceId!} entityType="FEATURE" entityId={id} score={(feature as any).score ?? null} invalidateKeys={['feature', workspaceId, id]} />}
+          ownerName={feature.assignee?.name || feature.assigneeName}
+          ownerLabel={c('owner')}
+          creatorName={feature.createdBy?.name || feature.createdBy?.email}
+          creatorLabel={c('creator')}
+          createdAt={feature.createdAt}
+          extra={<OkrTracePanel entityType="FEATURE" entityId={id} />}
+        />
       </div>
 
       <EntityTabs tabs={tabs} defaultTab="details" tabContents={tabContents} />

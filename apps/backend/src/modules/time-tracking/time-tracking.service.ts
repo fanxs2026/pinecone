@@ -16,16 +16,61 @@ export class TimeTrackingService {
 
   async findAll(
     workspaceId: string,
-    query: { storyId?: string; userId?: string; from?: string; to?: string; entityType?: string; entityId?: string },
+    query: { storyId?: string; userId?: string; from?: string; to?: string; entityType?: string; entityId?: string; releaseId?: string },
     skip: number = 0,
     take: number = 50,
   ): Promise<PaginatedResult<any>> {
     const where: any = { workspaceId };
 
+    // 筛选参数都是 UUID 列：传非法值 Prisma 会抛 P2023 变 500，这里先挡成 400。
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    for (const [name, val] of Object.entries({
+      storyId: query.storyId,
+      userId: query.userId,
+      entityId: query.entityId,
+      releaseId: query.releaseId,
+    })) {
+      if (val && !UUID_RE.test(val)) throw new BadRequestException(`${name} 需为 UUID`);
+    }
+
     if (query.storyId) where.storyId = query.storyId;
     if (query.userId) where.userId = query.userId;
-    if (query.entityType) where.entityType = query.entityType;
-    if (query.entityId) where.entityId = query.entityId;
+    // 实体类型筛选（2026-11-27）：任务的工时是 storyId 关联、entityType 列为空，
+    // 其余实体（支持请求/功能/需求/测试单）才写 entityType，两者语义不同要分开处理。
+    if (query.entityType === 'STORY') {
+      // 已显式指定 storyId 时保留精确过滤，别被"任意任务"覆盖掉
+      if (!query.storyId) where.storyId = query.entityId ?? { not: null };
+    } else if (query.entityType) {
+      where.entityType = query.entityType;
+      if (query.entityId) where.entityId = query.entityId;
+    } else if (query.entityId) {
+      where.entityId = query.entityId;
+    }
+
+    // 发布周期筛选（2026-11-27）：工时既可能挂在 story 上，也可能挂在该周期下的
+    // feature / support 上（entityType + entityId），两条路径都要覆盖，否则会漏数据。
+    if (query.releaseId) {
+      const [feats, sups] = await Promise.all([
+        this.prisma.feature.findMany({
+          where: { workspaceId, releaseId: query.releaseId },
+          select: { id: true },
+        }),
+        this.prisma.support.findMany({
+          where: { workspaceId, releaseId: query.releaseId },
+          select: { id: true },
+        }),
+      ]);
+      // 三种归属都要覆盖（实测 9 条工时：2 条挂 story.releaseId、5 条只有
+      // story.feature.releaseId、1 条挂 support 实体）——少一条就会筛出空列表。
+      const or: any[] = [
+        { story: { releaseId: query.releaseId } },
+        { story: { feature: { releaseId: query.releaseId } } },
+      ];
+      if (feats.length) or.push({ entityType: 'FEATURE', entityId: { in: feats.map((f) => f.id) } });
+      if (sups.length) or.push({ entityType: 'SUPPORT', entityId: { in: sups.map((s) => s.id) } });
+      where.OR = or;
+    }
+
     if (query.from || query.to) {
       where.date = {};
       if (query.from) where.date.gte = new Date(query.from);

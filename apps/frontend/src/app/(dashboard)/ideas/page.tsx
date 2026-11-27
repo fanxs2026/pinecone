@@ -366,7 +366,7 @@ export default function IdeasPage() {
               placeholder={t('descPlaceholder')}
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
-              className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+              className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm"
             />
             <Input
               placeholder={t('categoryPlaceholder')}

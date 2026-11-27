@@ -1,5 +1,6 @@
 'use client';
 
+import { formatDate } from '@/lib/date-utils';
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Gauge, X, Trash2, Loader2 } from 'lucide-react';
@@ -218,8 +219,8 @@ export default function ScoreEditor({ wsId, entityType, entityId, score, invalid
                 <p className="mb-1.5 text-xs font-medium text-muted-foreground">{t('history')}</p>
                 <TrendLine points={history.map((h) => h.weightedScore)} />
                 <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                  <span>{new Date(history[0].createdAt).toLocaleDateString('zh-CN')}</span>
-                  <span>{new Date(history[history.length - 1].createdAt).toLocaleDateString('zh-CN')}</span>
+                  <span>{formatDate(history[0].createdAt)}</span>
+                  <span>{formatDate(history[history.length - 1].createdAt)}</span>
                 </div>
               </div>
             )}

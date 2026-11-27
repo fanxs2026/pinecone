@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Paperclip, Camera, Trash2, Download } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAuthStore } from '@/stores/auth-store';
+import { apiBaseUrl } from '@/lib/runtime-config';
 
 interface FileUploadProps {
   workspaceId: string;
@@ -107,8 +108,24 @@ export default function FileUpload({ workspaceId, entityType, entityId }: FileUp
               ) : (
                 <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               )}
-              <span className="flex-1 truncate">{att.fileName}</span>
+              {/* 2026-11-27：此前只能删不能取，补预览与下载（后端鉴权端点） */}
+              <a
+                href={`${apiBaseUrl()}/workspaces/${workspaceId}/uploads/${att.id}/download?inline=1`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 truncate hover:text-primary hover:underline"
+              >
+                {att.fileName}
+              </a>
               <span className="shrink-0 text-xs text-muted-foreground">{formatSize(att.fileSize)}</span>
+              <a
+                href={`${apiBaseUrl()}/workspaces/${workspaceId}/uploads/${att.id}/download`}
+                download
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="download"
+              >
+                <Download className="h-3 w-3" />
+              </a>
               {/* Only the uploader sees the delete button (backend enforces uploader-or-admin) */}
               {att.uploadedBy.id === user?.id && (
                 <Button

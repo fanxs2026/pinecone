@@ -4,6 +4,8 @@
  * 浏览器要求：Chrome/Edge/Firefox/Safari 16.4+（均支持 CompressionStream）
  */
 
+import { formatDate } from './date-utils';
+
 /* ---------- CRC32 ---------- */
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -198,7 +200,7 @@ export async function downloadExcel(
   headers: string[],
   rows: (string | number | null | undefined)[][]
 ): Promise<void> {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = formatDate(new Date()); // 本地日期：toISOString 走 UTC，凌晨导出会差一天
   const encoder = new TextEncoder();
   const files = [
     { name: '[Content_Types].xml', content: encoder.encode(CONTENT_TYPES) },

@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import EntityTabs from '@/components/entity-tabs';
+import EntityDetailHeader from '@/components/entity-detail-header';
 import CommentSection from '@/components/comment-section';
 import HistoryTimeline from '@/components/history-timeline';
 import RelationsPanel from '@/components/relations-panel';
@@ -160,7 +161,7 @@ export default function IdeaDetailPage() {
             {editDesc ? (
               <div className="flex flex-1 flex-col gap-2">
                 <textarea value={descVal} onChange={e => setDescVal(e.target.value)}
-                  className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
+                  className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
                   onKeyDown={e => { if (e.key === 'Escape') setEditDesc(false); }} />
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => { if (descVal !== (idea.description || '')) updateMutation.mutate({ description: descVal || undefined }); else setEditDesc(false); }}>{c('save')}</Button>
@@ -272,29 +273,28 @@ export default function IdeaDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-2">
-          {idea.code && (
-            <Badge variant="outline" className="font-mono text-xs tracking-wider">{idea.code}</Badge>
-          )}
-          {/* 2026-08-14：状态下拉移至编号右侧 */}
-          <select
-            className="inline-flex h-6 items-center rounded-md border border-input bg-transparent px-1.5 text-xs font-medium"
-            value={idea.status}
-            onChange={(e) => updateMutation.mutate({ status: e.target.value })}
-          >
-            {IDEA_STATUS_VALUES.map((v) => (
-              <option key={v} value={v}>{tStatus(`IDEA_${v}`) || v}</option>
-            ))}
-          </select>
-          <VoteButton wsId={workspaceId!} entityType="IDEA" entityId={id} count={(idea as any).voteCount ?? 0} invalidateKeys={['idea', workspaceId, id]} />
-          <ScoreEditor wsId={workspaceId!} entityType="IDEA" entityId={id} score={(idea as any).score ?? null} invalidateKeys={['idea', workspaceId, id]} />
-          <h1 className="text-2xl font-bold tracking-tight">{idea.title}</h1>
-        </div>
-        <div className="text-muted-foreground text-sm">
-          <Badge variant="secondary" className={getStatusBadgeClasses('IDEA', idea.status)}>{tStatus(`IDEA_${idea.status}`) || idea.status}</Badge>
-          {(idea.assignee?.name || idea.assigneeName) && <span className="ml-2">{c('owner')}: {idea.assignee?.name || idea.assigneeName}</span>}
-          <span className="ml-2">{idea.createdBy?.name || idea.createdBy?.email} · {formatDate(idea.createdAt)}</span>
-        </div>
+        <EntityDetailHeader
+          code={idea.code}
+          title={idea.title}
+          statusControl={
+            <select
+              className="inline-flex h-6 items-center rounded-md border border-input bg-transparent px-1.5 text-xs font-medium"
+              value={idea.status}
+              onChange={(e) => updateMutation.mutate({ status: e.target.value })}
+            >
+              {IDEA_STATUS_VALUES.map((v) => (
+                <option key={v} value={v}>{tStatus(`IDEA_${v}`) || v}</option>
+              ))}
+            </select>
+          }
+          votes={<VoteButton wsId={workspaceId!} entityType="IDEA" entityId={id} count={(idea as any).voteCount ?? 0} invalidateKeys={['idea', workspaceId, id]} />}
+          score={<ScoreEditor wsId={workspaceId!} entityType="IDEA" entityId={id} score={(idea as any).score ?? null} invalidateKeys={['idea', workspaceId, id]} />}
+          ownerName={idea.assignee?.name || idea.assigneeName}
+          ownerLabel={c('owner')}
+          creatorName={idea.createdBy?.name || idea.createdBy?.email}
+          creatorLabel={c('creator')}
+          createdAt={idea.createdAt}
+        />
       </div>
       <EntityTabs tabs={tabs} defaultTab="details" tabContents={tabContents} />
     </div>

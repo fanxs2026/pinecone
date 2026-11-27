@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import EntityTabs from '@/components/entity-tabs';
+import EntityDetailHeader from '@/components/entity-detail-header';
 import CommentSection from '@/components/comment-section';
 import HistoryTimeline from '@/components/history-timeline';
 import RelationsPanel from '@/components/relations-panel';
@@ -249,7 +250,7 @@ export default function StoryDetailPage() {
             {editField === 'description' ? (
               <div className="flex flex-1 flex-col gap-2">
                 <textarea value={editVal} onChange={e => setEditVal(e.target.value)}
-                  className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
+                  className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
                   onKeyDown={e => { if (e.key === 'Escape') setEditField(null); }} />
                 <div className="flex gap-2">
                   <Button size="sm" onClick={saveEdit}>{c('save')}</Button>
@@ -270,7 +271,7 @@ export default function StoryDetailPage() {
             {editField === 'criteria' ? (
               <div className="flex flex-1 flex-col gap-2">
                 <textarea value={editVal} onChange={e => setEditVal(e.target.value)}
-                  className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
+                  className="min-h-[220px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm" autoFocus
                   onKeyDown={e => { if (e.key === 'Escape') setEditField(null); }} />
                 <div className="flex gap-2">
                   <Button size="sm" onClick={saveEdit}>{c('save')}</Button>
@@ -518,26 +519,26 @@ export default function StoryDetailPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {story.code && <Badge variant="outline" className="mr-2 font-mono text-xs tracking-wider">{story.code}</Badge>}
-          {story.title}
-        </h1>
-        <OkrTracePanel entityType="STORY" entityId={id} />
-        <div className="text-muted-foreground text-sm">
-          <Badge variant="secondary" className={STORY_PRIORITY_COLORS[story.priority] || 'bg-gray-100 text-gray-500'}>
-            {priorityLabel(story.priority)}
-          </Badge>
-          <Badge variant="secondary" className={getStatusBadgeClasses('STORY', story.status)}>
-            {statusLabel(story.status)}
-          </Badge>
-          {story.feature && (
-            <span className="ml-2">{story.feature.title}</span>
-          )}
-          {story.assignee && (
-            <span className="ml-2">{c('owner')}: {story.assignee.name || story.assignee.email}</span>
-          )}
-          <span className="ml-2">· {formatDate(story.createdAt)}</span>
-        </div>
+        <EntityDetailHeader
+          code={story.code}
+          title={story.title}
+          priorityBadge={
+            <Badge variant="secondary" className={STORY_PRIORITY_COLORS[story.priority] || 'bg-gray-100 text-gray-500'}>
+              {priorityLabel(story.priority)}
+            </Badge>
+          }
+          statusControl={
+            <Badge variant="secondary" className={getStatusBadgeClasses('STORY', story.status)}>
+              {statusLabel(story.status)}
+            </Badge>
+          }
+          ownerName={story.assignee ? story.assignee.name || story.assignee.email : null}
+          ownerLabel={c('owner')}
+          creatorName={story.createdBy?.name || story.createdBy?.email}
+          creatorLabel={c('creator')}
+          createdAt={story.createdAt}
+          extra={<OkrTracePanel entityType="STORY" entityId={id} />}
+        />
       </div>
 
       <EntityTabs tabs={tabs} defaultTab="details" tabContents={tabContents} />

@@ -355,7 +355,7 @@ export interface TimeEntry {
 }
 
 export const timeEntryApi = {
-  list: (wsId: string, params?: { storyId?: string; userId?: string; entityType?: string; entityId?: string; from?: string; to?: string }) =>
+  list: (wsId: string, params?: { storyId?: string; userId?: string; entityType?: string; entityId?: string; releaseId?: string; from?: string; to?: string }) =>
     apiClient.get<PaginatedResponse<TimeEntry>>(`/workspaces/${wsId}/time-entries`, { params }),
   create: (wsId: string, data: { storyId?: string; entityType?: string; entityId?: string; description: string; hours: number; date: string; billable?: boolean }) =>
     apiClient.post<TimeEntry>(`/workspaces/${wsId}/time-entries`, data),
