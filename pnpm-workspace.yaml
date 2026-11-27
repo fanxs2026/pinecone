@@ -22,20 +22,36 @@ minimumReleaseAgeExclude:
   - '@next/swc-win32-arm64-msvc@16.3.8'
   - '@next/swc-win32-x64-msvc@16.3.8'
   - next@16.3.8
+  - baseline-browser-mapping@2.11.40
+  - hono@4.13.23
 
-# 安全 overrides：升级可向后兼容的传递依赖，消除部分 audit high。
-# - socket.io-parser 4.2.7：@nestjs/platform-socket.io 用的 socket.io 4.x 兼容该修复版（GHSA-2m8v-j782-fhvr）
-# - brace-expansion 1.1.18：exceljs→archiver/glob 链路纯工具库，向后兼容（GHSA-3jxr/ mh99/ rgw5）
-# - js-yaml 4.3.1：@nestjs/swagger 依赖，修复 CVE-2026-59870（GHSA-5p4m）
-# - fast-uri 3.1.5：@prisma/client 内部 ajv 依赖，纯 URI 解析库，向后兼容（GHSA-v2hh/ 7p8r）
-# - deepmerge-ts 8.0.0：@prisma/client 内部 config 依赖，纯合并工具，向后兼容（GHSA-ggr8）
-# - proxy-addr 2.0.8（2026-10-20）：express → proxy-addr 存在 IP 欺骗（IPv4-mapped IPv6
-#   trust subnet，GHSA-jqcg-44mw-7w3h，critical），2.0.8 为补丁版，patch 级向后兼容。
-# 注：multer 属上游锁死（NestJS 11 锁 1.x，API 破坏性），无法在仓库内修复，CI 已降级审计级别跟踪。
+# 安全 overrides：升级可向后兼容的传递依赖，消除 audit 报告的高危项。
+#
+# 2026-11-27 第二轮调整（老板要求「尽量升级，但不要删任何东西」）：
+# - 原先把 brace-expansion / js-yaml / fast-uri 钉在 1.1.18 / 4.3.1 / 3.1.5，
+#   这三个版本本轮已被列进 advisory，统一抬到修复版
+# - 新增 prosemirror-view / body-parser / qs / engine.io / @xmldom/xmldom：
+#   都在运行时可达（编辑器 XSS、请求体 DoS、WebSocket DoS、SAML XML 解析）
+# - multer 被 @nestjs/platform-express 精确锁在 2.1.1（无 caret），升 2.2.0 只能 override；
+#   2.1→2.2 是 minor，上传接口需回归确认
+# - 不动 @node-saml/node-saml：SAML 属企业版功能，依赖保留
 overrides:
   socket.io-parser: '4.2.7'
-  brace-expansion: '1.1.18'
-  js-yaml: '4.3.1'
-  fast-uri: '3.1.5'
+  brace-expansion: '1.1.21'
+  js-yaml: '4.3.2'
+  browserslist: '4.29.6'
+  source-map-js: '1.2.4'
+  mysql2: '3.24.6'
+  hono: '4.13.23'
+  '@hono/node-server': '1.19.19'
+  valibot: '1.5.0'
+  baseline-browser-mapping: '2.11.40'
+  fast-uri: '3.1.9'
   deepmerge-ts: '8.0.0'
   proxy-addr: '2.0.8'
+  prosemirror-view: '1.42.3'
+  body-parser: '2.4.0'
+  qs: '6.17.1'
+  engine.io: '6.6.10'
+  multer: '2.5.0'
+  '@xmldom/xmldom': '0.8.15'
