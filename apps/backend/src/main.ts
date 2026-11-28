@@ -62,7 +62,14 @@ async function bootstrap() {
   // attachments should be served through an authenticated endpoint or
   // private object storage (see uploads module).
   if (process.env.NODE_ENV !== 'production') {
-    app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+    app.useStaticAssets(join(process.cwd(), 'uploads'), {
+      prefix: '/uploads',
+      setHeaders: (res) => {
+        // 防 MIME 嗅探：上传白名单已排除 html/svg，但文本类附件（txt/md/csv/sql）
+        // 若被浏览器猜成 text/html 就会同源执行脚本。nosniff 关掉这条路径。
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+      },
+    });
   }
 
   app.setGlobalPrefix('api');

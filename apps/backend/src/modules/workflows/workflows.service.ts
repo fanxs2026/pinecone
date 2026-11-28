@@ -79,7 +79,8 @@ export class WorkflowsService {
         },
       },
     });
-    if (!workflow) throw new NotFoundException('No workflow found for this entity type');
+    // 工作区未配置该实体的工作流属正常状态，返回 null 而不是 404：
+    // 「没配置」不等于「资源不存在」，前端调用方均用可选链取值，null 可直接消化。
     return workflow;
   }
 
