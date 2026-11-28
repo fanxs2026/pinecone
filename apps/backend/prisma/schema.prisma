@@ -753,6 +753,8 @@ model Attachment {
 }
 
 // ===== 用量统计（P3-B：实例匿名上报）=====
+// ⚠️ 2026-11-28：`POST /telemetry/ping` 接收端已下线（发布软件不提供厂商侧运营能力，
+//    且本表逐条 insert 会无限增长）。表结构保留仅为兼容历史数据，**不再有新写入**。
 model TelemetryReport {
   id          String   @id @default(uuid()) @db.Uuid
   instanceId  String

@@ -51,11 +51,36 @@ async function doRefresh(attempt = 1): Promise<void> {
   }
 }
 
+/**
+ * 匿名认证端点：这些请求的 401 是「凭据不对」，不是「token 过期」。
+ *
+ * 若不在拦截器里排除，登录页输错密码会出现：401 → 触发 refresh → refresh 也 401
+ * → 兜底 logout → window.location.href = '/login' 整页重载，
+ * 于是 setError() 刚设好的错误提示被冲掉，用户看到的是「点了没反应」（2026-11-28 实测）。
+ */
+const ANONYMOUS_AUTH_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/verify-email',
+  '/auth/sso',
+  '/auth/saml',
+];
+
+function isAnonymousAuthCall(url: string | undefined): boolean {
+  if (!url) return false;
+  return ANONYMOUS_AUTH_PATHS.some((p) => url.includes(p));
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const anonymousAuth = isAnonymousAuthCall(originalRequest?.url);
+    if (error.response?.status === 401 && !originalRequest._retry && !anonymousAuth) {
       originalRequest._retry = true;
       try {
         // Deduplicate concurrent refresh requests

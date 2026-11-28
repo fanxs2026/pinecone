@@ -989,58 +989,10 @@ export const okrApi = {
 };
 
 // ============================================================
-// Telemetry (P3-B 用量统计 + 方案 B 更新检查通道)
+// 厂商侧运营 API（License 签发/续期、活跃实例）已移出发布软件。
+// 前端页面：../pinecone-license-keys/tools/admin-ui
+// 发布版本不提供任何 License 签发 / 实例列表入口。
 // ============================================================
-export interface InstanceHeartbeat {
-  id: string;
-  instanceId: string;
-  version?: string | null;
-  edition: string;
-  lastSeenAt: string;
-  checkCount: number;
-}
-
-export const telemetryApi = {
-  checkUpdate: (instanceId: string, version: string, edition: string) =>
-    apiClient.get<{ latest: string; changelog: string; updateAvailable: boolean }>('/telemetry/updates/check', {
-      params: { instanceId, version, edition },
-    }),
-  listInstances: (page = 1, pageSize = 50) =>
-    apiClient.get<{ items: InstanceHeartbeat[]; total: number; active30d: number; active7d: number }>(
-      '/telemetry/instances',
-      { params: { page, pageSize } },
-    ),
-  summary: () => apiClient.get('/telemetry/summary'),
-};
-
-// P2-①：License 管理统一走 axios 拦截器（自动携带 httpOnly cookie token + 401 自动刷新），
-// 修复原页面直接读 localStorage.getItem('pinecone_token') 永远为 null 导致的 401。
-export interface LicenseItem {
-  id: string;
-  customerName: string;
-  customerEmail: string;
-  licenseKey: string;
-  edition: string;
-  seats: number;
-  issuedAt: string;
-  expiresAt: string;
-  status: string;
-  lastSeenAt?: string | null;
-  lastVersion?: string | null;
-  notes?: string | null;
-}
-
-export const licenseApi = {
-  list: (params: { search?: string; status?: string }) =>
-    apiClient.get<{ items: LicenseItem[]; total: number; page: number; pageSize: number }>('/admin/licenses', {
-      params,
-    }),
-  create: (data: { customerName: string; customerEmail: string; edition?: string; seats?: number; days: number }) =>
-    apiClient.post<LicenseItem>('/admin/licenses', data),
-  renew: (id: string, days: number, seats?: number) =>
-    apiClient.patch<LicenseItem>(`/admin/licenses/${id}/renew`, { days, seats }),
-  revoke: (id: string) => apiClient.delete(`/admin/licenses/${id}`),
-};
 
 // ============================================================
 // Reports (P1-⑧ 仪表盘报表 / G1-P0 报表补强)

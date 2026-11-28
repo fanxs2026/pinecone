@@ -15,9 +15,14 @@ const protectedPaths = [
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  // 与后端 auth.controller 的 ACCESS_COOKIE 保持一致（'pinecone-access'）——
+  // 与后端 auth.controller 的 cookie 名保持一致（'pinecone-access'）——
   // 曾误写 'pinecone-auth'（不存在）导致受保护页面永远跳登录
   const authCookie = request.cookies.get('pinecone-access');
+  // access（1h）过期后，只要 refresh（7d）还在就放行：
+  // 页面加载后首个 API 会拿到 401，由 axios 拦截器用 refresh cookie 静默续期。
+  // 只认 access 的话，用户挂机 1 小时再点任何页面都会被踢回登录页，
+  // 7 天有效的 refresh 等于白给（2026-11-28 审计 P2）。
+  const hasRefreshCookie = !!request.cookies.get('pinecone-refresh');
 
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     // 2026-11-26 修复（退出登录后被弹回首页、进不了登录页）：
@@ -35,7 +40,7 @@ export default function proxy(request: NextRequest) {
   }
 
   if (protectedPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
-    if (!authCookie) {
+    if (!authCookie && !hasRefreshCookie) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);

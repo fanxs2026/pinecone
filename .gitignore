@@ -122,3 +122,10 @@ scripts/license-keygen.js
 scripts/license-sign.js
 scripts/license-issue.js
 scripts/lib/licence-key.js
+
+# ── 厂商侧运营后台（不进发布软件，也不进公开仓库）──
+# 客户管理后台（License 签发 / 续期 / 吊销）与活跃实例页面已移出仓库，
+# 与签发工具同放 ../pinecone-license-keys/tools/admin-ui（仓库外目录）。
+../pinecone-license-keys/
+# 兜底：任何版本（社区版 / 企业版）都不得在设置页提供这两个入口
+apps/frontend/src/app/(dashboard)/admin/

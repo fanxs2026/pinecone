@@ -336,41 +336,28 @@ describe('Key journeys (e2e)', () => {
   });
 
   /**
-   * E9 平台管理面权限（2026-11-26 审计修复的回归）
+   * E9 厂商侧管理面已从发布软件移除（2026-11-28）
    *
-   * 缺陷：GET /api/telemetry/instances 与 /summary 只挂 JwtAuthGuard，
-   * 任何登录用户都能拉取全部客户实例的版本与活跃度（平台级信息泄露）。
-   * 同时旧 SystemAdminGuard 只认 users.isSystemAdmin，漏掉 REGISTRATION_ADMIN_EMAILS
-   * 名单路径 —— 运维按文档配名单反而 403。
+   * 「客户管理后台（License 签发/续期/吊销）」与「活跃实例」是厂商运营能力，
+   * 不进发布软件：前端页面、i18n 文案、API 客户端均已删除，
+   * 后端 GET /api/telemetry/instances 与 /summary 也一并移除。
+   * 回归断言：任何身份（含系统管理员）访问都应 404，防止接口被误加回来。
    */
-  it('E9 平台管理面：实例列表仅平台管理员可见（普通用户 403 / 名单内 200）', async () => {
+  it('E9 厂商侧管理面不存在：telemetry 实例列表 / 汇总 / ping 均已移除（404）', async () => {
     const plain = await request(server).get('/api/telemetry/instances').set(auth());
-    expect(plain.status).toBe(403);
+    expect(plain.status).toBe(404);
 
     const plainSummary = await request(server).get('/api/telemetry/summary').set(auth());
-    expect(plainSummary.status).toBe(403);
+    expect(plainSummary.status).toBe(404);
 
-    const adminEmail = 'e2e-admin@test.local';
-    let token: string;
-    const reg = await request(server)
-      .post('/api/auth/register')
-      .send({ email: adminEmail, password, name: 'E2E Admin' });
-    if (reg.status === 201) {
-      token = reg.body.accessToken;
-    } else {
-      const lg = await request(server).post('/api/auth/login').send({ email: adminEmail, password });
-      expect(lg.status).toBe(201);
-      token = lg.body.accessToken;
-    }
+    // 接收端 ping 也已下线：无消费方，且 telemetry_report 逐条 insert 会无限增长
+    const ping = await request(server).post('/api/telemetry/ping').send({ instanceId: 'e2e-probe' });
+    expect(ping.status).toBe(404);
 
-    const adminAuth = { Authorization: 'Bearer ' + token };
-    const ok = await request(server).get('/api/telemetry/instances').set(adminAuth);
-    expect(ok.status).toBe(200);
-    expect(Array.isArray(ok.body.items)).toBe(true);
-
-    const sum = await request(server).get('/api/telemetry/summary').set(adminAuth);
-    expect(sum.status).toBe(200);
-    expect(typeof sum.body.totalInstances).toBe('number');
+    // 客户端能力必须保留：更新检查 + 心跳
+    const check = await request(server).get('/api/telemetry/updates/check?version=1.0.0');
+    expect(check.status).toBe(200);
+    expect(typeof check.body.latest).toBe('string');
   });
 
   /**

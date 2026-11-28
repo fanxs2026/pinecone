@@ -19,8 +19,6 @@ import { cn } from '@/lib/utils';
 import { AccessControlPanel } from '@/components/access-control-panel';
 import { SsoConfigPanel } from '@/components/sso-config-panel';
 import { ScimConfigPanel } from '@/components/scim-config-panel';
-import Link from 'next/link';
-import { KeyRound, RadioTower } from 'lucide-react';
 import { WebhookConfigPanel } from '@/components/webhook-config-panel';
 import { MarketplacePanel } from '@/components/marketplace-panel';
 import { AdminAuditPanel } from '@/components/admin-audit-panel';
@@ -302,46 +300,10 @@ export default function SettingsPage() {
       </>
       )}
 
-      {/* 页签2：注册访问控制（白名单 + 邀请码） */}
-      {activeTab === 'access' && (
-        <>
-          <AccessControlPanel />
-          {currentUser?.isSystemAdmin && (
-            <Card>
-              <CardContent className="flex items-center justify-between py-4">
-                <div>
-                  <p className="text-sm font-medium">{t('licenseAdmin')}</p>
-                  <p className="text-xs text-muted-foreground">{t('licenseAdminDesc')}</p>
-                </div>
-                <Link
-                  href="/admin/licenses"
-                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <KeyRound className="h-3.5 w-3.5" />
-                  {t('licenseAdminOpen')}
-                </Link>
-              </CardContent>
-            </Card>
-          )}
-          {currentUser?.isSystemAdmin && (
-            <Card>
-              <CardContent className="flex items-center justify-between py-4">
-                <div>
-                  <p className="text-sm font-medium">{t('instancesAdmin')}</p>
-                  <p className="text-xs text-muted-foreground">{t('instancesAdminDesc')}</p>
-                </div>
-                <Link
-                  href="/admin/instances"
-                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  <RadioTower className="h-3.5 w-3.5" />
-                  {t('licenseAdminOpen')}
-                </Link>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
+      {/* 页签2：注册访问控制（白名单 + 邀请码）
+          注意：客户管理后台（License 签发/续期）与活跃实例属厂商侧运营能力，
+          不放发布软件；对应页面已移至 ../pinecone-license-keys/tools/admin-ui。 */}
+      {activeTab === 'access' && <AccessControlPanel />}
 
       {/* 页签3：反馈门户 + 评分模型（P0） */}
       {activeTab === 'feedback' && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
@@ -25,6 +25,11 @@ export default function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // 浏览器密码管理器自动填充只写 DOM、不触发 onChange，React state 会一直是空值
+  // → 界面上明明填好了，提交的却是空字符串（后端回报 "email must be an email"）。
+  // 提交时以输入框的实际 DOM 值为准，作为 state 的兜底。
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState('');
@@ -69,14 +74,37 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
+    // 以 DOM 实际值为准（自动填充兜底）；trim 掉复制粘贴带进来的空白
+    const finalEmail = (emailRef.current?.value ?? email).trim();
+    const finalPassword = passwordRef.current?.value ?? password;
+
+    if (!finalEmail || !finalPassword) {
+      setError(t('fillAllFields'));
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await authApi.login({ email, password });
+      const res = await authApi.login({ email: finalEmail, password: finalPassword });
       setAuth(res.user, res.accessToken);
       router.push('/');
     } catch (err: any) {
-      setError(err.response?.data?.message || t('loginFailed'));
+      const status = err?.response?.status;
+      const raw = err?.response?.data?.message;
+      const msg = Array.isArray(raw) ? raw[0] : raw;
+      if (!err?.response) {
+        // 拿不到响应 = 网络 / 证书 / 跨域，不能谎报成「密码错」
+        setError(t('networkError'));
+      } else if (status === 400) {
+        // 校验失败通常是空值或格式问题，别归因到密码
+        setError(t('fillAllFields'));
+      } else {
+        // 401 的英文 "Invalid credentials" 对用户没价值，走本地化文案；
+        // 其他说明性文案（如账号被禁用）保留后端原文
+        const friendly = msg && msg !== 'Invalid credentials' ? msg : t('loginFailed');
+        setError(friendly);
+      }
     } finally {
       setLoading(false);
     }
@@ -99,6 +127,7 @@ export default function LoginPage() {
               <Label htmlFor="email">{c('email')}</Label>
               <Input
                 id="email"
+                ref={emailRef}
                 type="email"
                 placeholder="name@example.com"
                 value={email}
@@ -111,6 +140,7 @@ export default function LoginPage() {
               <Label htmlFor="password">{c('password')}</Label>
               <Input
                 id="password"
+                ref={passwordRef}
                 type="password"
                 placeholder="••••••••"
                 value={password}
