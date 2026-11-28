@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# ⚠️ 本脚本生成的是**自签证书**：浏览器默认不信任，每台机器都要手动导入根证书，
+#    否则会出现「页面能开、接口请求被证书拦」的假故障（2026-11-28 实测）。
+#    推荐改用：node scripts/dev-cert.js（= pnpm cert:dev）——自动建本地 CA 并装进系统信任库。
+#
 # 生成自签名证书（本地/演示 HTTPS 用）。
 # 用法：./scripts/gen-cert.sh [局域网IP]
 # 输出：certs/pinecone.crt + certs/pinecone.key（SAN 含 localhost/127.0.0.1/局域网IP）

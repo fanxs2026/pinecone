@@ -6,7 +6,8 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "cert:dev": "node scripts/dev-cert.js"
   },
   "packageManager": "pnpm@11.10.0",
   "engines": {
